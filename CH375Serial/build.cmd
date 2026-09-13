@@ -25,7 +25,7 @@ if "%DOSBRIDGE%"=="" set DOSBRIDGE=C:\dosbridge
 set TOOLS=%~dp0..\CH375USBTOOLS\src
 if not exist bin mkdir bin
 
-for %%T in (serprobe sertalk) do (
+for %%T in (serprobe sertalk serterm) do (
   echo --- %%T
   fpc -Tmsdos -Pi8086 -WmLarge -Fu"%TOOLS%" -FEbin -FUbin src\%%T.pas >nul
   if errorlevel 1 goto failed
@@ -74,4 +74,8 @@ exit /b %ERRORLEVEL%
 
 :runlines
 python "%DOSBRIDGE%\dosctl.py" run --timeout 250 bin\SERTALK.EXE /M
+exit /b %ERRORLEVEL%
+
+:runterm
+python "%DOSBRIDGE%\dosctl.py" run --timeout 300 bin\SERTERM.EXE /I=ATI7 /S=20
 exit /b %ERRORLEVEL%

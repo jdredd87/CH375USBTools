@@ -319,6 +319,72 @@ That is an inference from the ID table, not something measured here.
 
 ---
 
+## SERTERM: an ANSI terminal
+
+```
+SERTERM [/P=260] [/C=n] [/B=9600] [/7|/8] [/E|/O] [/2]
+        [/F=n] [/L] [/I=cmd] [/D=num] [/S=secs] [/Q]
+
+  ALT-X quit    ALT-H hang up    ALT-C clear
+```
+
+A real terminal, holding the port open: keyboard at one end, screen at the
+other. `SERTALK` sends one command per run and re-enumerates the bus each
+time, which makes a conversation impossible; this is what turns the adapter
+from a proven thing into a usable one.
+
+![the terminal running](doc/serterm.png)
+
+Three things in it are worth knowing.
+
+**It is the only program here that writes straight to video memory.**
+Everything else prints through DOS so the bridge can capture it. A terminal
+cannot — it needs the cursor anywhere on screen, in any colour, without
+scrolling the display. So it writes to `B800` directly and the bridge sees
+nothing, which is why it prints a DOS summary on the way out; otherwise a run
+over the bridge returns an empty log and looks like a program that never
+started.
+
+**Mono is probed, not assumed.** The video card in this machine boots to mono
+on some power cycles and colour on others with no configuration change, so the
+segment and the attributes are decided at run time from `INT 10h AH=1Ah`. A
+terminal that hardcodes `B800` writes into nothing on those boots and looks
+hung. On mono it uses bright and reverse rather than a colour ramp, because the
+monitor sums the guns and two different colours land on the same grey.
+
+**ANSI colour order is not the PC's.** `0,4,2,6,1,5,3,7` — red and blue are
+swapped. Getting that wrong gives you a BBS that is readable but wrong, which
+is the hardest kind of bug to notice.
+
+`/S=secs` exists so the thing can be tested at all: a terminal quits on a
+keystroke and the bridge has no keyboard, so without it an unattended run
+blocks until somebody walks to the machine.
+
+## Several adapters, one interface
+
+`dser` identifies the chipset family and then dispatches, because only CDC-ACM
+is a standard and the rest are private vendor protocols that agree about
+nothing — not how a baud rate is encoded, not whether line settings are one
+message or three, not even whether the data stream contains only data.
+
+| family | line settings | notes |
+|---|---|---|
+| **Keyspan** | **works, verified** | 34-byte control message on its own endpoint; **1 status byte** per RX packet |
+| **CDC-ACM** | written, untested | the only published standard; baud is simply the baud rate |
+| **FTDI** | written, untested | divisor is `3000000/baud` in eighths, fraction encoded into `wIndex`; **2 status bytes** per RX packet |
+| **CP210x** | written, untested | vendor requests, plain 32-bit baud |
+| CH340 / PL2303 | recognised only | detected and reported; no line-setting path yet |
+
+Only Keyspan has been exercised against hardware. The other three are written
+from their published protocols and are marked untested rather than claimed to
+work — `SERPROBE` will say which family it found, and `SERTERM` refuses rather
+than guessing if the family has no path.
+
+The per-packet header is the trap that generalises: FTDI puts **two** status
+bytes at the head of every bulk IN packet and Keyspan puts **one**, so `SerRecv`
+strips `StatusHdr` and returns the count of real data bytes. Skip it and you
+get rubbish interleaved with your data, and you blame the baud rate.
+
 ## The tools
 
 ### `SERPROBE` — identify the adapter

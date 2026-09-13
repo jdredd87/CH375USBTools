@@ -96,6 +96,13 @@ type
     EpStatIn : Byte;
     NBulkIn  : Byte;            { how many bulk INs the config declares }
     NBulkOut : Byte;
+    { Data toggles, kept with the device so a caller cannot get them out
+      of step by holding its own copies. }
+    TogIn    : Byte;
+    TogOut   : Byte;
+    TogCtl   : Byte;
+    TogStat  : Byte;
+    Opened   : Boolean;
     HasNotify: Boolean;
     StatusHdr: Byte;            { bytes of status at the head of each IN }
   end;
@@ -111,6 +118,37 @@ function SerSupported(F: TSerFamily): Boolean;
 { Identify from the device and configuration descriptors already fetched. }
 function SerDetect(const Cfg: TBigCfg; Len: Word;
                    VID, PID: Word; var D: TSerDev): Boolean;
+
+{ ---- the driver interface: one shape, several chipsets ----
+
+  Everything above identifies a device; these four actually drive it, and
+  each dispatches on D.Family.  The split matters because only CDC-ACM is a
+  standard -- the rest are private vendor protocols that agree about
+  nothing -- so the ONLY thing they can share is this interface.
+
+  SerOpen configures and enables the port.  SerSend and SerRecv move bytes
+  and hide the per-packet header that some parts put in front of received
+  data (FTDI two bytes, Keyspan one).  SerClose releases the line.
+
+  A family that is recognised but not implemented returns False from
+  SerOpen rather than pretending, and SerSupported says so in advance. }
+
+{ Bits is 5..8, Par is 0 none / 1 odd / 2 even, Stop is 1 or 2.
+
+  RxBatch is how many characters the adapter should gather before sending
+  a USB packet, and it is exposed rather than hidden because on this
+  hardware it is the difference between working and not: one character per
+  packet is 960 packets/second at 9600 baud and this CH375 manages a few
+  hundred.  SerBatchFor computes a sensible value from the baud rate. }
+function SerOpen(var D: TSerDev; Baud: LongInt;
+                 Bits, Par, Stop, RxBatch: Byte): Boolean;
+function SerSend(var D: TSerDev; const Buf; Len: Byte): Boolean;
+function SerRecv(var D: TSerDev; var Buf; Max: Word; var Got: Byte): Boolean;
+procedure SerClose(var D: TSerDev);
+
+{ Characters per USB packet that keeps the packet rate near 110/s, which
+  is inside what this chip sustains. }
+function SerBatchFor(Baud: LongInt): Byte;
 
 { ---- the pieces every tool here needs, proven in CH375Audio ---- }
 
@@ -150,7 +188,7 @@ end;
 
 function SerSupported(F: TSerFamily): Boolean;
 begin
-  SerSupported := F in [sfCdcAcm, sfFtdi, sfCh34x, sfCp210x];
+  SerSupported := F in [sfCdcAcm, sfFtdi, sfCp210x, sfKeyspan];
 end;
 
 { Identification is by VENDOR ID first and class second, and that order is
@@ -303,6 +341,255 @@ end;
    was learned the hard way; the comments there have the full story and
    are not repeated at length.                                        }
 { ------------------------------------------------------------------ }
+
+function SerBatchFor(Baud: LongInt): Byte;
+var N: LongInt;
+begin
+  { bytes/s is baud/10; aim for about 110 packets/s, which is inside what
+    this chip sustains. }
+  N := Baud div 1000;
+  if N < 4 then N := 4;
+  if N > 48 then N := 48;
+  SerBatchFor := Byte(N);
+end;
+
+{ ---------------------------------------------------------------- }
+{  Keyspan usa90.  The layout is reconstructed rather than          }
+{  documented, and the device confirmed it: the status message it   }
+{  returns is exactly the 14 bytes the struct predicts, the port    }
+{  reports ENABLED, and an adapter loopback returns what was sent.  }
+{ ---------------------------------------------------------------- }
+
+const
+  KEYSPAN_BAUDCLK = 14769231;
+  KS_LEN = 34;
+  KS_SETCLOCK = 0;  KS_BAUDLO = 1;   KS_BAUDHI = 2;
+  KS_SETLCR = 3;    KS_LCR = 4;
+  KS_SETRXMODE = 5; KS_SETTXMODE = 7;
+  KS_SETTXFLOW = 9; KS_SETRXFLOW = 11;
+  KS_SETRTS = 19;   KS_RTS = 20;
+  KS_SETDTR = 21;   KS_DTR = 22;
+  KS_RXFWDLEN = 23; KS_RXFWDTMO = 24; KS_TXACK = 25;
+  KS_PORTENABLED = 26;
+  KS_RXFLUSH = 30;  KS_RETSTATUS = 33;
+
+function KeyspanOpen(var D: TSerDev; Baud: LongInt;
+                     Bits, Par, Stop, RxBatch, Enable: Byte): Boolean;
+var
+  M   : array[0..KS_LEN - 1] of Byte;
+  Dv  : LongInt;
+  K   : Integer;
+  Lcr : Byte;
+begin
+  for K := 0 to KS_LEN - 1 do M[K] := 0;
+  Dv := KEYSPAN_BAUDCLK div (Baud * 16);
+  if Dv < 1 then Dv := 1;
+
+  { The 16550 LCR everyone uses: data bits in 0-1, stop bit in 2, parity
+    above that. }
+  Lcr := (Bits - 5) and $03;
+  if Stop >= 2 then Lcr := Lcr or $04;
+  if Par = 1 then Lcr := Lcr or $08
+  else if Par = 2 then Lcr := Lcr or $18;
+
+  M[KS_SETCLOCK] := 1;
+  M[KS_BAUDLO]   := Byte(Dv and $FF);
+  M[KS_BAUDHI]   := Byte((Dv shr 8) and $FF);
+  M[KS_SETLCR]   := 1;
+  M[KS_LCR]      := Lcr;
+  M[KS_SETRXMODE] := 1;
+  M[KS_SETTXMODE] := 1;
+  M[KS_SETTXFLOW] := 1;
+  M[KS_SETRXFLOW] := 1;
+  M[KS_SETRTS]   := 1;  M[KS_RTS] := Enable;
+  M[KS_SETDTR]   := 1;  M[KS_DTR] := Enable;
+  M[KS_RXFWDLEN] := RxBatch;
+  M[KS_RXFWDTMO] := 16;
+  M[KS_TXACK]    := 1;
+  M[KS_PORTENABLED] := Enable;
+  M[KS_RXFLUSH]  := 1;
+  M[KS_RETSTATUS] := 1;
+
+  KeyspanOpen := EpOut(D.EpCtrlOut, D.TogCtl, M, KS_LEN) = INT_SUCCESS;
+end;
+
+{ ---------------------------------------------------------------- }
+{  CDC-ACM.  The only one of these that is a published standard,    }
+{  and the only one where the baud rate is simply the baud rate     }
+{  rather than a divisor somebody has to reverse out.               }
+{ ---------------------------------------------------------------- }
+
+function CdcOpen(var D: TSerDev; Baud: LongInt;
+                 Bits, Par, Stop, Enable: Byte): Boolean;
+var
+  B: array[0..7] of Byte;
+  R: Integer;
+begin
+  B[0] := Byte(Baud and $FF);
+  B[1] := Byte((Baud shr 8) and $FF);
+  B[2] := Byte((Baud shr 16) and $FF);
+  B[3] := Byte((Baud shr 24) and $FF);
+  if Stop >= 2 then B[4] := 2 else B[4] := 0;
+  B[5] := Par;
+  B[6] := Bits;
+  R := CtrlOut($21, CDC_SET_LINE_CODING, 0, Word(D.CtrlIf), B, 7);
+  if R <> INT_SUCCESS then
+  begin
+    CdcOpen := False;
+    Exit;
+  end;
+  { SET_CONTROL_LINE_STATE: bit 0 is DTR, bit 1 is RTS. }
+  if Enable <> 0 then
+    R := CtrlNoData($21, CDC_SET_CTRL_LINE, $0003, Word(D.CtrlIf))
+  else
+    R := CtrlNoData($21, CDC_SET_CTRL_LINE, $0000, Word(D.CtrlIf));
+  CdcOpen := R = INT_SUCCESS;
+end;
+
+{ ---------------------------------------------------------------- }
+{  FTDI.  Vendor requests on endpoint 0, and a divisor carrying a   }
+{  three-bit fraction encoded into the top of wIndex.               }
+{ ---------------------------------------------------------------- }
+
+const
+  FtdiFrac: array[0..7] of Word = (0, 3, 2, 4, 1, 5, 6, 7);
+
+function FtdiOpen(var D: TSerDev; Baud: LongInt;
+                  Bits, Par, Stop, Enable: Byte): Boolean;
+var
+  Dv, Fr: LongInt;
+  V, Idx, Lcr: Word;
+  R: Integer;
+begin
+  FtdiOpen := False;
+  if CtrlNoData($40, $00, 0, 0) <> INT_SUCCESS then Exit;   { reset }
+
+  { 3,000,000 / baud, held in eighths so the fraction survives. }
+  Dv := (3000000 * 8) div Baud;
+  Fr := Dv and 7;
+  Dv := Dv shr 3;
+  V := Word(Dv and $3FFF);
+  Idx := FtdiFrac[Fr] shl 14;
+  if (Dv shr 14) <> 0 then Idx := Idx or 1;
+  if CtrlNoData($40, $03, V, Idx) <> INT_SUCCESS then Exit;
+
+  { data characteristics: length in 0-7, parity in 8-10, stop in 11-13 }
+  Lcr := Bits or (Word(Par) shl 8);
+  if Stop >= 2 then Lcr := Lcr or (Word(2) shl 11);
+  if CtrlNoData($40, $04, Lcr, 0) <> INT_SUCCESS then Exit;
+
+  { modem control: each line has a value bit and a "change me" mask bit }
+  if Enable <> 0 then
+    R := CtrlNoData($40, $01, $0303, 0)
+  else
+    R := CtrlNoData($40, $01, $0300, 0);
+  FtdiOpen := R = INT_SUCCESS;
+end;
+
+{ ---------------------------------------------------------------- }
+{  Silicon Labs CP210x.                                             }
+{ ---------------------------------------------------------------- }
+
+function Cp210xOpen(var D: TSerDev; Baud: LongInt;
+                    Bits, Par, Stop, Enable: Byte): Boolean;
+var
+  B: array[0..3] of Byte;
+  Lcr: Word;
+  R: Integer;
+begin
+  Cp210xOpen := False;
+  if CtrlNoData($41, $00, 1, Word(D.DataIf)) <> INT_SUCCESS then Exit;
+  B[0] := Byte(Baud and $FF);
+  B[1] := Byte((Baud shr 8) and $FF);
+  B[2] := Byte((Baud shr 16) and $FF);
+  B[3] := Byte((Baud shr 24) and $FF);
+  if CtrlOut($41, $1E, 0, Word(D.DataIf), B, 4) <> INT_SUCCESS then Exit;
+  { SET_LINE_CTL: stop bits in 0-3, parity in 4-7, data bits in 8-15 }
+  Lcr := Word(Bits) shl 8;
+  Lcr := Lcr or (Word(Par) shl 4);
+  if Stop >= 2 then Lcr := Lcr or 2;
+  if CtrlNoData($41, $03, Lcr, Word(D.DataIf)) <> INT_SUCCESS then Exit;
+  if Enable <> 0 then
+    R := CtrlNoData($41, $07, $0303, Word(D.DataIf))
+  else
+    R := CtrlNoData($41, $07, $0300, Word(D.DataIf));
+  Cp210xOpen := R = INT_SUCCESS;
+end;
+
+{ ---------------------------------------------------------------- }
+
+function SerOpen(var D: TSerDev; Baud: LongInt;
+                 Bits, Par, Stop, RxBatch: Byte): Boolean;
+var Ok: Boolean;
+begin
+  D.TogIn := $80; D.TogOut := $80; D.TogCtl := $80; D.TogStat := $80;
+  if (Bits < 5) or (Bits > 8) then Bits := 8;
+  if Stop < 1 then Stop := 1;
+  if RxBatch < 1 then RxBatch := 1;
+  case D.Family of
+    sfKeyspan: Ok := KeyspanOpen(D, Baud, Bits, Par, Stop, RxBatch, 1);
+    sfCdcAcm:  Ok := CdcOpen(D, Baud, Bits, Par, Stop, 1);
+    sfFtdi:    Ok := FtdiOpen(D, Baud, Bits, Par, Stop, 1);
+    sfCp210x:  Ok := Cp210xOpen(D, Baud, Bits, Par, Stop, 1);
+  else
+    Ok := False;
+  end;
+  D.Opened := Ok;
+  SerOpen := Ok;
+end;
+
+{ Release the line.  Dropping DTR and RTS is what tells a modem the call
+  is over, and leaving them up is how a program that exits badly leaves a
+  line seized. }
+procedure SerClose(var D: TSerDev);
+begin
+  if not D.Opened then Exit;
+  case D.Family of
+    sfKeyspan: KeyspanOpen(D, 9600, 8, 0, 1, 16, 0);
+    sfCdcAcm:  CdcOpen(D, 9600, 8, 0, 1, 0);
+    sfFtdi:    FtdiOpen(D, 9600, 8, 0, 1, 0);
+    sfCp210x:  Cp210xOpen(D, 9600, 8, 0, 1, 0);
+  end;
+  D.Opened := False;
+end;
+
+function SerSend(var D: TSerDev; const Buf; Len: Byte): Boolean;
+begin
+  SerSend := EpOut(D.EpOut, D.TogOut, Buf, Len) = INT_SUCCESS;
+end;
+
+{ Receive, with the per-packet header stripped.
+
+  FTDI puts two status bytes at the head of EVERY bulk IN packet and
+  Keyspan puts one, so an idle FTDI answers with a two-byte packet
+  carrying no data at all rather than NAKing.  Got comes back as the count
+  of real DATA bytes, which is what every caller wants; a packet that is
+  nothing but header reads as Got = 0 and True -- nothing wrong, nothing
+  to say.  A reader that skips this gets rubbish interleaved with its
+  data and blames the baud rate. }
+function SerRecv(var D: TSerDev; var Buf; Max: Word; var Got: Byte): Boolean;
+var
+  P : PByte;
+  N : Byte;
+  R : Integer;
+  K : Integer;
+begin
+  Got := 0;
+  P := @Buf;
+  R := EpIn(D.EpIn, D.TogIn, Buf, Max, N);
+  if R <> INT_SUCCESS then
+  begin
+    SerRecv := False;
+    Exit;
+  end;
+  if N > D.StatusHdr then
+  begin
+    for K := 0 to N - 1 - D.StatusHdr do
+      P[K] := P[K + D.StatusHdr];
+    Got := N - D.StatusHdr;
+  end;
+  SerRecv := True;
+end;
 
 function ChipThere: Boolean;
 begin
