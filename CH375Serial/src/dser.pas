@@ -286,6 +286,15 @@ begin
     how an idle FTDI part answers with 2 bytes rather than NAKing. }
   if D.Family = sfFtdi then D.StatusHdr := 2;
 
+  { Keyspan puts ONE byte in front of the data on every bulk IN packet.
+    This is MEASURED, not recalled: an adapter loopback of "AT"+CR came
+    back as three packets of two bytes -- 00 41, 00 54, 00 0D -- so the
+    leading byte is a per-packet flag and the data follows it. A reader
+    that does not strip it gets a NUL between every character, which looks
+    like a framing or baud error and is not. Same shape of trap as FTDI's
+    two bytes, and the reason that one is documented here too. }
+  if D.Family = sfKeyspan then D.StatusHdr := 1;
+
   SerDetect := (D.EpIn <> 0) and (D.EpOut <> 0);
 end;
 

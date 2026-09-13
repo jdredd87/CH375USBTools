@@ -3,8 +3,10 @@
 USB-to-serial adapters on an 8086-class DOS machine, through a CH375 USB host
 card.
 
-**Status: early. The probe works and is verified against real hardware; nothing
-drives a serial port yet.** This file says exactly what has been measured and
+**Status: the USB half works.** The adapter's port can be opened, configured
+and driven, and data goes out and comes back through the adapter's own
+loopback. The modem attached to it does not answer, and the evidence points
+past the adapter rather than at it. This file says exactly what has been measured and
 what has not, because the interesting part of this project is that — unlike
 CH375Audio — there is no architectural reason it should fail.
 
@@ -82,6 +84,89 @@ down the data pipe and out of the serial port as gibberish.
 
 ---
 
+## The USB path is proven, end to end
+
+`SERTALK` opens the port with a reconstructed Keyspan control message and the
+adapter accepts it:
+
+```
+  control msg       : 34 bytes to EP 02
+  control message -> success
+  STATUS  msr 33  CTS DSR  | port ENABLED | control ack 1
+```
+
+Three things in that one line are evidence rather than hope. The status
+message is **exactly 14 bytes**, which is the length of the reconstructed
+`usa90` status struct. `portState` bit 7 says the port is **enabled**, so the
+message was acted on rather than merely accepted. And `controlResponse`
+echoes the `returnStatus` we asked for.
+
+### Adapter loopback: the data path works
+
+With the adapter's own TX-to-RX loopback enabled — the modem, the cable and
+the baud rate all out of the picture — `AT` + CR comes straight back:
+
+```
+  TX  3: 41 54 0D  |AT.|
+  RX  2: 00 41  |.A|
+  RX  2: 00 54  |.T|
+  RX  2: 00 0D  |..|
+```
+
+So everything from the 8086, through the CH375, through USB, into the adapter
+and back is working.
+
+**And it caught a trap worth the whole exercise:** every bulk IN packet carries
+a **one-byte header** before the data. Strip it and you get `AT
+`; don't, and
+you get a NUL between every character, which looks exactly like a framing or
+baud-rate error and is not. This is Keyspan's equivalent of FTDI's two status
+bytes — and unlike the FTDI note, this one is *measured here* rather than
+recalled.
+
+### The modem is present but silent
+
+`CTS` and `DSR` read asserted, `DCD` and `RI` low — which is what a powered,
+idle modem with no carrier looks like.
+
+The obvious suspicion was a **crossover/null-modem cable**, where RTS loops
+back to CTS and DTR to DSR, so a disconnected adapter mimics a live modem.
+`SERTALK /M` drives both outputs through all four combinations and reads the
+inputs back:
+
+| RTS / DTR | CTS / DSR read back |
+|---|---|
+| 0 / 0 | CTS DSR |
+| 1 / 0 | CTS DSR |
+| 0 / 1 | CTS DSR |
+| 1 / 1 | CTS DSR |
+
+They do **not** track our outputs, so the lines are not looped — the far end is
+genuinely holding them up.
+
+But no AT command gets an answer. `SERTALK /W` sweeps 1200, 2400, 9600, 19200,
+38400, 57600 and 115200 baud, sending `AT` twice at each (modems auto-baud from
+the `AT` prefix, and often use the first one only to measure the rate). Nothing
+replied at any of them, and the adapter never reported a character-transmit
+acknowledgement.
+
+**So the break is between the adapter's TX pin and the modem**, not anywhere in
+the USB chain. Things worth checking, roughly in order of how often they turn
+out to be the cause:
+
+* **The cable.** A straight-through DB9 with pins 2 and 3 actually present. A
+  cable missing TX produces precisely this: control lines up, nothing gets
+  through.
+* **The modem's DIP switches.** Many external modems have one that disables
+  command recognition ("dumb" mode), and another that forces DTR.
+* **The modem's own settings.** `ATE0Q1` — echo off, quiet — means it answers
+  nothing at all, and it is stored in NVRAM, so a modem left that way stays
+  that way.
+* **Data mode.** If it is stuck online, it wants `+++` and a pause, not `AT`.
+
+None of those can be told apart from this end, which is why the README says
+where the boundary of the evidence is rather than guessing past it.
+
 ## What is verified, and what is not
 
 | | |
@@ -91,8 +176,11 @@ down the data pipe and out of the serial port as gibberish.
 | Selecting the bulk configuration | **verified** |
 | Endpoint map | **verified** |
 | Status pipe behaviour with an idle port | **verified** — steady NAK (42), 4487 of them in 5 s |
-| Setting baud rate / line settings | **not implemented** |
-| Sending or receiving a byte of serial data | **not attempted** |
+| Keyspan control message (port open, baud, LCR, RTS/DTR) | **works** — port reports ENABLED |
+| Status message decode (CTS/DSR/DCD/RI, port state) | **works** |
+| Sending and receiving serial data | **works in adapter loopback** |
+| The one-byte RX packet header | **measured** |
+| Talking to the attached modem | **no reply at any of 7 baud rates** |
 
 A steady NAK on the status pipe is the *correct* answer for a port that has not
 been opened: the adapter has nothing to report until it has been configured
