@@ -128,6 +128,8 @@ var
   Sweep   : Boolean;
   Lines   : Boolean;
   ShowStat: Boolean;
+  RawHex  : Boolean;
+  FwdLen  : Byte;
   I       : Integer;
   S       : ShortString;
   Rc      : Integer;
@@ -302,8 +304,28 @@ begin
   M[O_RTS]         := Rts;
   M[O_SETDTR]      := 1;
   M[O_DTR]         := Dtr;            { a modem wants DTR up }
-  M[O_RXFWDLEN]    := 1;              { forward as soon as ONE byte is in }
-  M[O_RXFWDTMO]    := 10;
+  { HOW MANY CHARACTERS THE ADAPTER BATCHES BEFORE FORWARDING.
+
+    This was 1 -- forward the instant a byte arrives -- which gives the
+    lowest latency and is what a terminal wants. It is also why ATI7 came
+    back shredded, and the reason is a number this project already knew.
+
+    One character per USB packet means 960 packets/second at 9600 baud,
+    and 9600 is the SLOW setting. The CH375 on this machine manages a few
+    hundred packets/second: CH375Audio measured 131-138/s for 64-byte
+    bulk transfers and DLBENCH puts the ceiling around 19 KB/s. So the
+    adapter was producing packets several times faster than the host could
+    collect them, and the overflow shows up as dropped and torn characters
+    -- which reads as a baud-rate or framing fault and is neither.
+
+    Batching fixes it from the right end: ask for whole mouthfuls instead
+    of single bytes and the packet rate falls by the batch factor while
+    the BYTE rate is unchanged. The timeout is what keeps it responsive --
+    a short reply that never reaches the batch size is still forwarded
+    after this many milliseconds, so "OK" does not sit waiting for 31 more
+    characters that will never come. }
+  M[O_RXFWDLEN]    := FwdLen;
+  M[O_RXFWDTMO]    := 16;
   { Ask the adapter to acknowledge characters it has actually TRANSMITTED.
     This is what separates "the modem ignored us" from "the bytes never
     left the adapter" -- without it, a dead TX line and a deaf modem look
@@ -324,6 +346,7 @@ begin
   Fld('divisor', Dec1(Div_) + '  (' + Hex2(M[O_BAUDHI]) + ' '
                  + Hex2(M[O_BAUDLO]) + ')');
   Fld('actual baud', Dec1(KEYSPAN_BAUDCLK div (Div_ * 16)));
+  Fld('rx batching', Dec1(FwdLen) + ' char(s) or 16 ms');
   Fld('control msg', Dec1(CTRLMSG_LEN) + ' bytes to EP '
                      + Hex2(Dev.EpCtrlOut));
 
@@ -341,8 +364,11 @@ var
   T0, Elapsed, Spins: LongInt;
   NData, NStat: LongInt;
   K     : Integer;
+  Line  : ShortString;
+  LineN : Byte;
 begin
   NData := 0; NStat := 0;
+  LineN := 0; Line := '';
   while KeyWaiting do EatKey;
   T0 := Ticks; Spins := 0;
   while True do
@@ -363,7 +389,34 @@ begin
       for K := 0 to Got - 1 - Dev.StatusHdr do
         Buf[K] := Buf[K + Dev.StatusHdr];
       Got := Got - Dev.StatusHdr;
-      Show('RX', Buf, Got);
+      if RawHex then Show('RX', Buf, Got);
+      { Assemble into lines rather than printing byte by byte.
+
+        rxForwardingLength is 1, so the adapter forwards each character the
+        instant it arrives -- lowest latency, and exactly what a terminal
+        wants, but it means one USB packet per character. Printed raw that
+        turns "OK" into three lines of hex. Buffer until LF and the reply
+        reads as what it is. }
+      for K := 0 to Got - 1 do
+      begin
+        if (Buf[K] = 10) or (LineN >= 70) then
+        begin
+          if LineN > 0 then
+          begin
+            Line[0] := Chr(LineN);
+            WriteLn('  < ', Line);
+            LineN := 0;
+          end;
+        end
+        else if Buf[K] <> 13 then
+        begin
+          Inc(LineN);
+          if (Buf[K] >= 32) and (Buf[K] < 127) then
+            Line[LineN] := Chr(Buf[K])
+          else
+            Line[LineN] := '.';
+        end;
+      end;
       Inc(NData);
       GotAny := True;
     end;
@@ -377,6 +430,11 @@ begin
         Inc(NStat);
       end;
     end;
+  end;
+  if LineN > 0 then
+  begin
+    Line[0] := Chr(LineN);
+    WriteLn('  < ', Line);
   end;
   WriteLn;
   WriteLn('  data packets ', NData, ', status packets ', NStat);
@@ -400,6 +458,10 @@ begin
     WriteLn('    /L       adapter loopback: TX wired to RX inside the');
     WriteLn('             adapter, so the modem is taken out of the test');
     WriteLn('    /X       dump the status pipe as well');
+    WriteLn('    /H       also show every RX packet as raw hex');
+    WriteLn('    /F=n     characters the adapter batches per USB packet,');
+    WriteLn('             default 32. /F=1 is lowest latency and drops');
+    WriteLn('             data above a few hundred baud on this hardware');
     WriteLn('    /W       sweep the usual baud rates looking for an answer');
     WriteLn('    /M       drive RTS/DTR and read CTS/DSR back, to find out');
     WriteLn('             whether the control lines are really looped');
@@ -409,7 +471,7 @@ begin
 
   WantCfg := 1; Baud := 9600; Secs := 4; Send := 'AT';
   RawOnly := False; ShowStat := False; GotAny := False; Loop := False;
-  Sweep := False; Lines := False;
+  Sweep := False; Lines := False; RawHex := False; FwdLen := 32;
   for I := 1 to ParamCount do
   begin
     S := ParamStr(I);
@@ -425,11 +487,15 @@ begin
       'L': Loop := True;
       'W': Sweep := True;
       'M': Lines := True;
+      'H': RawHex := True;
+      'F': FwdLen := Byte(NumArg(S, 4));
       'X': ShowStat := True;
       'T': CtrlTrace := True;
     end;
   end;
   if Baud < 50 then Baud := 9600;
+  if FwdLen < 1 then FwdLen := 1;
+  if FwdLen > 64 then FwdLen := 64;
   if Secs < 1 then Secs := 1;
   if CtrlTrace then Trace := @Narrate;
 

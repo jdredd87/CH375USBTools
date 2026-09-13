@@ -3,12 +3,13 @@
 USB-to-serial adapters on an 8086-class DOS machine, through a CH375 USB host
 card.
 
-**Status: the USB half works.** The adapter's port can be opened, configured
-and driven, and data goes out and comes back through the adapter's own
-loopback. The modem attached to it does not answer, and the evidence points
-past the adapter rather than at it. This file says exactly what has been measured and
-what has not, because the interesting part of this project is that — unlike
-CH375Audio — there is no architectural reason it should fail.
+**Status: it works.** An 8086 running DOS talks to a USRobotics Courier
+V.Everything modem through a CH375 and a USB-to-serial adapter, at up to
+**38400 baud**, with `AT` commands and multi-line replies coming back cleanly.
+
+Unlike CH375Audio there was never an architectural reason this should fail, and
+it didn't. What it cost was two DIP switches on the modem and one number: the
+USB packet rate.
 
 ---
 
@@ -124,15 +125,92 @@ baud-rate error and is not. This is Keyspan's equivalent of FTDI's two status
 bytes — and unlike the FTDI note, this one is *measured here* rather than
 recalled.
 
-### The modem is present but silent
+### It talks to a real modem
 
-`CTS` and `DSR` read asserted, `DCD` and `RI` low — which is what a powered,
-idle modem with no carrier looks like.
+A USRobotics Courier V.Everything, over the adapter, from the 8086:
 
-The obvious suspicion was a **crossover/null-modem cable**, where RTS loops
-back to CTS and DTR to DSR, so a disconnected adapter mimics a live modem.
-`SERTALK /M` drives both outputs through all four combinations and reads the
-inputs back:
+```
+  TX  5: 41 54 49 37 0D  |ATI7.|
+  < ATI7
+  < USRobotics Courier V.Everything Configuration Profile...
+  < Product type           US/Canada External
+  < Product ID             00345303
+  < Options                HST,V32bis,Terbo,V34+,V90,V92
+  < Flash ROM              1024k, C2-22D6
+  < Serial Number          5MBRX42P1878
+  < OK
+```
+
+That is the whole chain: an 8086, a CH375, USB, a Keyspan adapter, RS-232, and
+a modem answering.
+
+### The packet rate is the limit, and it sets the baud ceiling
+
+The first long reply came back shredded — characters torn and NULs interleaved,
+which reads exactly like a baud-rate or framing fault and is neither. The cause
+is a number this project already knew.
+
+`rxForwardingLength` was 1, meaning *forward the instant a byte arrives*. That
+is the lowest latency and what a terminal wants, but at 9600 baud it is **960
+USB packets per second**, and 9600 is the slow setting. This CH375 manages a
+few hundred: CH375Audio measured **131–138 packets/s** for 64-byte bulk
+transfers. The adapter was producing packets several times faster than the host
+could collect them.
+
+The fix comes from the right end — batch. Ask the adapter for whole mouthfuls
+instead of single bytes and the *packet* rate falls by the batch factor while
+the *byte* rate is unchanged. `rxForwardingTimeout` keeps it responsive: a short
+reply that never reaches the batch size is forwarded anyway after 16 ms, so
+`OK` does not sit waiting for 31 characters that will never come.
+
+With 32-character batching:
+
+| baud | bytes/s | packets/s at batch 32 | result |
+|---|---|---|---|
+| 9600 | 960 | 30 | **clean** |
+| 38400 | 3,840 | 120 | **clean** |
+| 57600 | 5,760 | 180 | **marginal** — starts clean, tears partway through a long reply |
+| 115200 | 11,520 | 360 | **unusable** |
+
+**38400 baud is the reliable ceiling**, and it lands exactly where the measured
+packet limit predicts: 120 packets/s against ~130–138 available. 57600 needs
+180 and degrades once a reply runs long enough to fill the buffer. Raising the
+batch to 64 did not rescue 115200 and introduced its own corruption, so 32 is
+the setting that ships.
+
+That is a satisfying place to end up: the constraint is not the baud rate, the
+UART, or the adapter — it is the same USB packet-rate ceiling that decided the
+video project's frame rate and killed the audio one. One number explains all
+three.
+
+### What it took to get the modem talking
+
+The modem was silent at first, at every baud rate, while asserting CTS and DSR.
+Two things were wrong, both at the modem end:
+
+* **DIP switch 1** was at its default, *DTR Normal* — the modem requires DTR.
+  Setting it to *Ignore DTR* removes any dependency on that line being wired
+  through the cable.
+* **DIP switch 10** was at its default, *load the configuration stored in
+  NVRAM*. Setting it to *load `&F0` from ROM* overrides whatever was saved
+  there — including an `ATE0Q1` that would make the modem obey commands
+  silently.
+
+Switches on a Courier are read **only at power-on**, so they do nothing until
+the modem is switched off and on.
+
+A note on getting this right: the switch table for the 8-switch Sportster is
+**not** the table for the 10-switch Courier, and several positions are
+inverted between them. On this modem `ON` means `DOWN`. The authoritative
+table is USR's own, and it is printed on the unit.
+
+### The modem-line test, and what it ruled out
+
+Before the DIP switches were touched, `CTS` and `DSR` read asserted while
+nothing answered. The obvious suspicion was a **crossover/null-modem cable**,
+where RTS loops back to CTS and DTR to DSR, so a disconnected adapter mimics a
+live modem. `SERTALK /M` drives both outputs through all four combinations and
+reads the inputs back:
 
 | RTS / DTR | CTS / DSR read back |
 |---|---|
@@ -141,31 +219,9 @@ inputs back:
 | 0 / 1 | CTS DSR |
 | 1 / 1 | CTS DSR |
 
-They do **not** track our outputs, so the lines are not looped — the far end is
-genuinely holding them up.
-
-But no AT command gets an answer. `SERTALK /W` sweeps 1200, 2400, 9600, 19200,
-38400, 57600 and 115200 baud, sending `AT` twice at each (modems auto-baud from
-the `AT` prefix, and often use the first one only to measure the rate). Nothing
-replied at any of them, and the adapter never reported a character-transmit
-acknowledgement.
-
-**So the break is between the adapter's TX pin and the modem**, not anywhere in
-the USB chain. Things worth checking, roughly in order of how often they turn
-out to be the cause:
-
-* **The cable.** A straight-through DB9 with pins 2 and 3 actually present. A
-  cable missing TX produces precisely this: control lines up, nothing gets
-  through.
-* **The modem's DIP switches.** Many external modems have one that disables
-  command recognition ("dumb" mode), and another that forces DTR.
-* **The modem's own settings.** `ATE0Q1` — echo off, quiet — means it answers
-  nothing at all, and it is stored in NVRAM, so a modem left that way stays
-  that way.
-* **Data mode.** If it is stuck online, it wants `+++` and a pause, not `AT`.
-
-None of those can be told apart from this end, which is why the README says
-where the boundary of the evidence is rather than guessing past it.
+They do not track, so the lines were not looped — the far end really was
+holding them up, and the cable was never the problem. Worth keeping: it is a
+two-minute test that eliminates an entire class of wiring fault.
 
 ## What is verified, and what is not
 
@@ -180,7 +236,9 @@ where the boundary of the evidence is rather than guessing past it.
 | Status message decode (CTS/DSR/DCD/RI, port state) | **works** |
 | Sending and receiving serial data | **works in adapter loopback** |
 | The one-byte RX packet header | **measured** |
-| Talking to the attached modem | **no reply at any of 7 baud rates** |
+| Talking to a USR Courier V.Everything | **works** — `AT` → `OK`, `ATI7` → full profile |
+| Reliable baud ceiling | **38400** measured; 57600 marginal, 115200 unusable |
+| RX batching to stay under the packet ceiling | **measured** — 32 chars/packet |
 
 A steady NAK on the status pipe is the *correct* answer for a port that has not
 been opened: the adapter has nothing to report until it has been configured
