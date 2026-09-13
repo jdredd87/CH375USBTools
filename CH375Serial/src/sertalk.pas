@@ -130,6 +130,7 @@ var
   ShowStat: Boolean;
   RawHex  : Boolean;
   FwdLen  : Byte;
+  Dial    : ShortString;
   I       : Integer;
   S       : ShortString;
   Rc      : Integer;
@@ -272,6 +273,28 @@ begin
     end;
   end;
   if not Done then WriteLn('no status came back');
+end;
+
+{ Send a line of text plus CR on the data pipe. }
+procedure SendLine(const T: ShortString);
+var
+  B: array[0..79] of Byte;
+  N: Byte;
+  K: Integer;
+  R: Integer;
+begin
+  N := 0;
+  for K := 1 to Length(T) do
+  begin
+    if N >= 78 then Break;
+    B[N] := Ord(T[K]);
+    Inc(N);
+  end;
+  B[N] := 13; Inc(N);
+  WriteLn('  > ', T);
+  R := EpOut(Dev.EpOut, TogOut, B, N);
+  if R <> INT_SUCCESS then
+    WriteLn('    (send -> ', StatusName(R), ')');
 end;
 
 { Build and send the port control message. }
@@ -459,6 +482,7 @@ begin
     WriteLn('             adapter, so the modem is taken out of the test');
     WriteLn('    /X       dump the status pipe as well');
     WriteLn('    /H       also show every RX packet as raw hex');
+    WriteLn('    /D=num   dial num, listen, then ALWAYS hang up');
     WriteLn('    /F=n     characters the adapter batches per USB packet,');
     WriteLn('             default 32. /F=1 is lowest latency and drops');
     WriteLn('             data above a few hundred baud on this hardware');
@@ -472,6 +496,7 @@ begin
   WantCfg := 1; Baud := 9600; Secs := 4; Send := 'AT';
   RawOnly := False; ShowStat := False; GotAny := False; Loop := False;
   Sweep := False; Lines := False; RawHex := False; FwdLen := 32;
+  Dial := '';
   for I := 1 to ParamCount do
   begin
     S := ParamStr(I);
@@ -489,6 +514,7 @@ begin
       'M': Lines := True;
       'H': RawHex := True;
       'F': FwdLen := Byte(NumArg(S, 4));
+      'D': Dial := Copy(S, 4, 40);
       'X': ShowStat := True;
       'T': CtrlTrace := True;
     end;
@@ -577,6 +603,52 @@ begin
     the cable is crossed, or nothing is on the far end -- and no baud rate
     was ever going to work. If they do not, the far end really is
     asserting them and the fault is elsewhere. }
+  { DIALLING, and the reason it is one mode rather than three commands.
+
+    A modem that has gone off-hook stays off-hook. If this program sent
+    ATDT and then exited -- because it finished, or because somebody
+    pressed a key, or because it crashed -- the line would be left seized
+    and the only way back would be another run or the modem's power
+    switch. So dial, listen and hang up are a single unbroken sequence
+    with the ATH on every path out, including the early ones.
+
+    The speaker is turned on first (M1 = on until carrier, L3 = loud) so
+    that whoever is standing next to the modem can hear what is actually
+    happening. Dial tone, DTMF digits and ringing are three completely
+    different failures and no result code distinguishes them as well as
+    listening does. }
+  if Dial <> '' then
+  begin
+    WriteLn;
+    WriteLn('DIALLING ', Dial);
+    WriteLn('----------------------------------------------------------------');
+    SendLine('ATM1L3');
+    Listen(2);
+    { X3: dial BLIND -- do not wait for a dial tone -- but still detect
+      busy. A VOIP adapter very often produces a dial tone that a modem of
+      this age does not recognise, which comes back as NO DIAL TONE from a
+      line that is perfectly serviceable. X3 removes the modem's opinion
+      from the question; if the line really is dead the call simply fails
+      later instead, which is a more informative failure. }
+    SendLine('ATX3');
+    Listen(2);
+    SendLine('ATDT' + Dial);
+    WriteLn('  (listening ', Secs, 's -- the phone should ring)');
+    Listen(Secs);
+    WriteLn;
+    WriteLn('  hanging up');
+    SendLine('ATH');
+    Listen(3);
+    SendLine('ATM0');
+    Listen(2);
+    WriteLn;
+    WriteLn('  The line has been released. If anything above says the modem');
+    WriteLn('  is still off-hook, run:  SERTALK /A=ATH');
+    WriteLn;
+    WriteLn('=== done ===');
+    Halt(0);
+  end;
+
   if Lines then
   begin
     WriteLn;

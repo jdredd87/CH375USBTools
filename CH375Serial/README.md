@@ -144,6 +144,45 @@ A USRobotics Courier V.Everything, over the adapter, from the 8086:
 That is the whole chain: an 8086, a CH375, USB, a Keyspan adapter, RS-232, and
 a modem answering.
 
+### Dialling: the modem works, the line does not
+
+`SERTALK /D=<number>` dials, listens, and **always hangs up** — dial, listen
+and `ATH` are one unbroken sequence with the hang-up on every path out,
+including the early ones. A modem that has gone off-hook stays off-hook, and a
+program that exits without releasing the line leaves it seized until somebody
+power-cycles the modem.
+
+Against a VOIP adapter, every attempt came back the same way:
+
+```
+  > ATDT8594093505
+  < NO DIAL TONE
+```
+
+That is the modem talking, and talking correctly — the whole command path
+works, the echo comes back, `ATH` returns `OK`, the line releases. What it
+cannot find is a dial tone.
+
+The usual software answer is to dial blind: `ATX3` (no dial-tone wait, busy
+detection kept) and then `ATX0` (the most permissive setting there is, which
+should not be able to emit that result code at all). **Both still reported NO
+DIAL TONE**, which is the useful part of the result: when the most permissive
+setting still refuses, the modem is not being fussy about an unfamiliar VOIP
+tone — it is not seizing the line at all.
+
+So the remaining causes are all on the line side, and none can be told apart
+from the DOS end:
+
+* **The wrong jack.** A Courier has both `LINE` and `PHONE` sockets and they
+  look identical. The cable must be in `LINE`.
+* **The ATA port is not live.** The decisive test takes ten seconds: plug an
+  ordinary telephone into the same socket and listen for dial tone.
+* **The ATA is not registered** with its provider, so the port is dead even
+  though the box is powered.
+
+`ATX3` is what ships, because blind dialling with busy detection is the right
+default for a VOIP line even though it did not rescue this one.
+
 ### The packet rate is the limit, and it sets the baud ceiling
 
 The first long reply came back shredded — characters torn and NULs interleaved,
