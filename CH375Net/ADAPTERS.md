@@ -86,37 +86,62 @@ Either way, budget the volume: at 1 event per 44 MB a single clean 5 MB
 download means almost nothing, and treating a small clean result as a
 control is the mistake this project has made most often.
 
-## Tried, and it does not answer any protocol we know
+## Works at the register level, no driver yet
 
 | Chip | USB ID | Notes |
 |---|---|---|
-| unidentified | `0FE6:9702`, `iProduct` "USB 2.0 10/100M Ethernet Adaptor", no manufacturer string | **Not driven, and not a Davicom.** `0FE6` is the Kontron/ICS range that DM9601 rebadges live in, so the obvious guess was a DM96xx — `DMPROBE` disproves it. Every framing of the Davicom register read returns **the same eight bytes whatever register is asked for**, so nothing is decoding the index. Two interfaces: **interface 0 is MASS STORAGE** (class `08/06/50`) — the driver-CD flash — and interface 1 is the network one, bulk `81` IN / `02` OUT plus interrupt `83` IN. |
+| **DM9601/SR9700-compatible clone** | `0FE6:9702`, `iProduct` "USB 2.0 10/100M Ethernet Adaptor", no manufacturer string, housing marked **"Gzcyc No:9700"** | **Identified and answering.** Register file reads correctly, MAC `00:E8:00:4C:26:D5`, NSR reports link up. Two interfaces: **interface 0 is MASS STORAGE** (`08/06/50`, the driver-CD flash) and interface 1 is the network one — bulk `81` IN / `02` OUT, interrupt `83` IN. **It only implements SINGLE-BYTE register reads** — see below. No driver written yet. |
 
-### Two things this adapter taught the project
+### The quirk: multi-byte register reads are broken
+
+`0FE6:9700` is the CoreChip SR9700 in Linux's `sr9700.c`, and the housing
+marking "9700" agrees. The SR9700 uses the same vendor requests as the DM9601,
+so the Linux framing should have worked first time. It appeared not to:
+
+```
+type C0 req 00 val 0000 idx 0000 -> success, 8 bytes
+type C0 req 00 val 0000 idx 0010 -> success, 8 bytes
+   both:  00 E8 00 4C 26 D5 07 05
+```
+
+Identical whatever register was asked for, which reads as "this device does not
+implement the protocol". It does. **A multi-byte read returns the PAR block
+from `0x10` regardless of `wIndex`** — those eight bytes are the MAC address
+followed by two bytes of something else. Single-byte reads decode `wIndex`
+correctly:
+
+```
+00h=00  01h=C1  00h=00      -> index honoured
+```
+
+So the register file is perfectly readable, one transfer per register. **A
+driver for this part must read registers singly.** One that fetches the six
+MAC bytes in a single transfer gets the fixed block and happens to come up with
+the right answer *for the MAC specifically* — and the wrong answer for
+everything else, which is a far nastier way to be wrong.
+
+### Three things this adapter taught the project
 
 **A success status is not evidence the device understood the request.** The
-CH375 reads into its own 64-byte buffer, and a device that answers an
-unimplemented vendor request with a zero-length data stage leaves the
-*previous* transfer's bytes sitting there. `DMPROBE`'s first version duly
-printed this adapter's own configuration-descriptor bytes as though they were
-a register file — and they looked plausible right up until the MAC came out as
-`03:08:00:00:00:00`, which is an endpoint descriptor.
+CH375 reads into its own 64-byte buffer, and `DMPROBE`'s first version printed
+this adapter's configuration-descriptor bytes as though they were a register
+file. They looked plausible until the MAC came out as `03:08:00:00:00:00` —
+which is an endpoint descriptor.
 
-Poisoning the caller's buffer does not catch it either, because the chip
-faithfully copies its own stale buffer over the poison. The test that works is
-**A/B/A**: read register 0, read register 10h, read register 0 again. Only
-*the two reads of 0 agree and the middle one differs* proves the device is
-really decoding `wIndex`. A buffer will happily agree with itself all day.
-
-`DMPROBE` now sweeps every plausible framing and judges each one that way
-rather than stopping at the first `INT_SUCCESS` — which is what the first
-version did, and why it never tried the alternatives at all.
+**The test that works is A/B/A.** Read register 0, read register 10h, read
+register 0 again. Only *the two reads of 0 agree and the middle one differs*
+proves the device is decoding `wIndex`. Poisoning the caller's buffer does not
+catch a stale read, because the chip copies its own stale buffer over the
+poison — and a buffer will agree with itself all day. The first framing sweep
+had the same disease as the thing it was testing: it stopped at the first
+`INT_SUCCESS`, so on a device that answers the first framing spuriously it
+never tried the others.
 
 **The first bulk endpoint pair is not necessarily the network one.** This
 device's mass-storage interface comes first and has its own bulk IN/OUT. A
-driver that takes the first pair it finds binds to the flash chip and then
-waits forever for frames from something that has never heard of Ethernet, with
-nothing in the failure pointing at the cause. Pick by exclusion, not by order.
+driver that takes the first pair binds to the flash chip and then waits forever
+for frames from something that has never heard of Ethernet, with nothing in the
+failure pointing at the cause. Pick by exclusion.
 
 ## Tried, and it is NOT what its ID says
 

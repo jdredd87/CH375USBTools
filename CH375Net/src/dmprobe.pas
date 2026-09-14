@@ -101,6 +101,7 @@ var
   Honoured: Boolean;
   Alt     : array[0..63] of Byte;
   Alt2    : array[0..63] of Byte;
+  One     : array[0..3] of Byte;
   AltA    : array[0..63] of Byte;
   AltB    : array[0..63] of Byte;
   Differ  : Boolean;
@@ -358,6 +359,17 @@ begin
     the middle one differs" means the device is really decoding wIndex.
     Anything else is a buffer, and a buffer will happily agree with itself
     all day. }
+  { CLAIM THE INTERFACE FIRST.
+
+    This is a composite device -- mass storage on interface 0, network on
+    interface 1 -- and nothing had ever selected the network one. A
+    function on a composite part is entitled to ignore vendor requests
+    until its interface is claimed, and SET_CONFIGURATION alone does not
+    claim anything. It costs one control transfer to rule out. }
+  Rc := CtrlNoData($01, REQ_SET_IFACE, 0, Word(NetIf));
+  WriteLn('  SET_INTERFACE ', NetIf, ' alt 0 -> ', StatusName(Rc));
+  WriteLn;
+
   Honoured := False;
   WriteLn('  trying each framing, judged by A/B/A rather than by status:');
   for Fr := 0 to NFRAME - 1 do
@@ -396,6 +408,28 @@ begin
       WriteLn('      -> the index makes no difference.');
   end;
 
+  { A single-byte read, which is how most drivers actually poll a status
+    register. A device with a fixed-size reply block might only decode the
+    index when asked for exactly one. }
+  if not Honoured then
+  begin
+    WriteLn;
+    WriteLn('  one byte at a time, A/B/A:');
+    ReadRegsAs($C0, DM_READ_REGS, 0, $00, 1, AltA);
+    ReadRegsAs($C0, DM_READ_REGS, 0, $01, 1, Alt);
+    ReadRegsAs($C0, DM_READ_REGS, 0, $00, 1, AltB);
+    WriteLn('    00h=', Hex2(AltA[0]), '  01h=', Hex2(Alt[0]),
+            '  00h=', Hex2(AltB[0]));
+    if (AltA[0] = AltB[0]) and (AltA[0] <> Alt[0]) then
+    begin
+      WriteLn('    -> INDEX HONOURED for single-byte reads.');
+      Honoured := True;
+      GoodFrame := 0;
+    end
+    else
+      WriteLn('    -> no.');
+  end;
+
   if not Honoured then
   begin
     WriteLn;
@@ -417,13 +451,28 @@ begin
     Halt(6);
   end;
 
+  { ONE REGISTER PER TRANSFER, because this part cannot do more.
+
+    The multi-byte read returns a fixed eight-byte block whatever index is
+    asked for, and only the single-byte form decodes wIndex. That is a
+    defect in the clone rather than in the protocol -- the Linux driver
+    reads blocks freely, and on a genuine part so could we -- but it is
+    the shape of the thing in front of us, so the probe reads 32 registers
+    with 32 transfers and says so rather than pretending.
+
+    Anything built on this later must do the same. A driver that fetches
+    the six MAC bytes in one go gets that fixed block instead and comes up
+    with an address the adapter does not have. }
   WriteLn;
-  WriteLn('  reading the register file with framing ', GoodFrame + 1);
-  if not ReadRegsAs(FrType[GoodFrame], FrReq[GoodFrame], FrValA[GoodFrame],
-                    FrIdxA[GoodFrame], 32, Regs) then
+  WriteLn('  reading 32 registers, one transfer each');
+  for I := 0 to 31 do
   begin
-    WriteLn('  ...which then failed. Giving up.');
-    Halt(6);
+    Got := 0;
+    Rc := CtrlIn($C0, DM_READ_REGS, 0, Word(I), 1, One, 4, Got);
+    if (Rc = INT_SUCCESS) and (Got >= 1) then
+      Regs[I] := One[0]
+    else
+      Regs[I] := $FF;
   end;
 
   WriteLn;
