@@ -189,6 +189,25 @@ begin
     Halt(6);
   end;
 
+  { The DM9601 family is a special case now: it has a driver, it just does
+    not have a PACKET driver. Saying "not implemented" would send somebody
+    away from a part that demonstrably moves frames. }
+  if Id.Family = nfDM9601 then
+  begin
+    WriteLn('RECOGNISED.  Driven by SRLINK, but not by USBPKT yet.');
+    WriteLn;
+    WriteLn('sr9700.pas brings this family up and moves frames in both');
+    WriteLn('directions -- run SRLINK to see it receive, and to send an');
+    WriteLn('ARP and wait for the answer.  What it does NOT have is a');
+    WriteLn('resident packet driver, so mTCP cannot use it yet.');
+    WriteLn;
+    WriteLn('Note the quirk before writing anything: some of these clones');
+    WriteLn('only decode a register index on SINGLE-BYTE reads, and answer');
+    WriteLn('a multi-byte read with a fixed block.  ADAPTERS.md has it.');
+    WriteLn;
+    Halt(3);
+  end;
+
   WriteLn('RECOGNISED, BUT NOT IMPLEMENTED.');
   WriteLn;
   WriteLn('This is a ', FamilyName(Id.Family), ', and only the ASIX');

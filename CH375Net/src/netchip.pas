@@ -80,7 +80,7 @@ const
     in the last twenty years.  The list is not exhaustive and does not need
     to be: anything missing still gets identified by class if it speaks
     CDC, and reported as an unknown vendor device if it does not. }
-  NENTRY = 24;
+  NENTRY = 28;
   Tbl: array[0..NENTRY - 1] of record
     V, P: Word; F: TNetFamily; N: ShortString;
   end = (
@@ -99,6 +99,14 @@ const
     (V: $0424; P: $9500; F: nfLAN95xx; N: 'SMSC LAN9500'),
     (V: $0424; P: $7500; F: nfLAN95xx; N: 'Microchip LAN7500'),
     (V: $0424; P: $7800; F: nfLAN95xx; N: 'Microchip LAN7800'),
+    { CoreChip SR9700 and the clones sold under its IDs. The 0FE6 range is
+      Kontron/ICS; 9700 is the SR9700 proper and 9702 is a clone that has
+      been seen answering the same register protocol, with the caveat that
+      it only implements SINGLE-BYTE register reads -- see ADAPTERS.md. }
+    (V: $0FE6; P: $9700; F: nfDM9601; N: 'CoreChip SR9700'),
+    (V: $0FE6; P: $9702; F: nfDM9601; N: 'SR9700 clone (single-byte regs)'),
+    (V: $0FE6; P: $8101; F: nfDM9601; N: 'DM9601 (Kontron)'),
+    (V: $07AA; P: $9601; F: nfDM9601; N: 'Corega FEther USB-TXC'),
     (V: $0A46; P: $9601; F: nfDM9601; N: 'Davicom DM9601'),
     (V: $0A46; P: $0268; F: nfDM9601; N: 'Davicom DM9601'),
     (V: $9710; P: $7830; F: nfMCS7830; N: 'Moschip MCS7830'),

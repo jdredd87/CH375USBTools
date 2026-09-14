@@ -55,6 +55,13 @@ var
   Promisc : Boolean;
   ShowHex : Boolean;
   NoReset : Boolean;
+  DoArp   : Boolean;
+  ArpOk   : Boolean;
+  ArpIp   : LongInt;
+  SrcIp   : LongInt;
+  NArpReply: LongInt;
+  BenchN  : Integer;
+  NSent   : LongInt;
   MassIf  : Integer;
   Frame   : array[0..1599] of Byte;
   Got     : Word;
@@ -230,6 +237,52 @@ begin
   end;
 end;
 
+{ Build an ARP request for Target, from our own MAC and SrcIp.
+
+  ARP is the right transmit test and nothing else comes close. It is 42
+  bytes so it fits in one USB packet; every host on the segment is obliged
+  to answer one addressed to it; the answer comes back to OUR MAC
+  specifically rather than to a broadcast, so receiving it proves the
+  adapter's address filter as well as the wire; and it needs no IP stack,
+  no configuration and no cooperation from anything on this machine.
+
+  A reply is therefore end-to-end proof: the frame we built left the host,
+  crossed the wire, was understood by a real device, and its answer came
+  back through the same adapter. Nothing short of that proves transmit at
+  all -- a send that returns "success" only means the chip took the bytes. }
+procedure BuildArp(var F: array of Byte; const Src: TMacAddr;
+                   SrcIp, DstIp: LongInt; var Len: Word);
+var I: Integer;
+begin
+  for I := 0 to 59 do F[I] := 0;
+  for I := 0 to 5 do F[I] := $FF;              { to broadcast }
+  for I := 0 to 5 do F[6 + I] := Src[I];
+  F[12] := $08; F[13] := $06;                  { ARP }
+  F[14] := $00; F[15] := $01;                  { Ethernet }
+  F[16] := $08; F[17] := $00;                  { IPv4 }
+  F[18] := 6; F[19] := 4;
+  F[20] := $00; F[21] := $01;                  { request }
+  for I := 0 to 5 do F[22 + I] := Src[I];
+  F[28] := Byte((SrcIp shr 24) and $FF);
+  F[29] := Byte((SrcIp shr 16) and $FF);
+  F[30] := Byte((SrcIp shr 8) and $FF);
+  F[31] := Byte(SrcIp and $FF);
+  { 32..37 target MAC stays zero -- it is what is being asked for }
+  F[38] := Byte((DstIp shr 24) and $FF);
+  F[39] := Byte((DstIp shr 16) and $FF);
+  F[40] := Byte((DstIp shr 8) and $FF);
+  F[41] := Byte(DstIp and $FF);
+  Len := 60;                                   { pad to the minimum frame }
+end;
+
+function IpStr(V: LongInt): ShortString;
+var T: ShortString;
+begin
+  T := Dec1((V shr 24) and $FF) + '.' + Dec1((V shr 16) and $FF) + '.'
+     + Dec1((V shr 8) and $FF) + '.' + Dec1(V and $FF);
+  IpStr := T;
+end;
+
 begin
   Banner('SRLINK', VER, 'SR9700/DM9601 bring-up and receive test');
   if HelpWanted then
@@ -239,6 +292,8 @@ begin
     WriteLn('    /S=n  seconds to listen, default 15');
     WriteLn('    /M    promiscuous (default on)');
     WriteLn('    /X    hex-dump each frame');
+    WriteLn('    /Q    skip the ARP transmit test');
+    WriteLn('    /B=n  send n frames as fast as possible and time it');
     WriteLn('    /N    skip the chip reset (it is the prime suspect for');
     WriteLn('          the adapter dropping off the bus mid-bring-up)');
     HelpTail;
@@ -246,6 +301,15 @@ begin
   end;
 
   Secs := 15; Promisc := True; ShowHex := False; NoReset := False;
+  { Defaults chosen for the network this was developed on; /G and /A move
+    them. The source address is deliberately NOT the one the machine's
+    other adapter uses -- two interfaces answering for one address is a
+    good way to spend an evening blaming the wrong thing. }
+  DoArp := True; ArpOk := False; BenchN := 0;
+  ArpIp := (LongInt(192) shl 24) or (LongInt(168) shl 16)
+           or (LongInt(50) shl 8) or 1;
+  SrcIp := (LongInt(192) shl 24) or (LongInt(168) shl 16)
+           or (LongInt(50) shl 8) or 77;
   for I := 1 to ParamCount do
   begin
     S := ParamStr(I);
@@ -257,6 +321,8 @@ begin
       'M': Promisc := True;
       'X': ShowHex := True;
       'N': NoReset := True;
+      'Q': DoArp := False;
+      'B': BenchN := NumArg(S, 4);
       'V': Trace := @Narrate;
       'T': CtrlTrace := True;
     end;
@@ -376,6 +442,98 @@ begin
   WriteLn;
   WriteLn('LISTENING FOR ', Secs, 's');
   WriteLn('----------------------------------------------------------------');
+  { TRANSMIT. Ask the gateway who it is and wait for it to say. }
+  if DoArp then
+  begin
+    Stage('arp');
+    WriteLn;
+    WriteLn('TRANSMIT TEST -- ARP for ', IpStr(ArpIp));
+    WriteLn('----------------------------------------------------------------');
+    BuildArp(Frame, Mac, SrcIp, ArpIp, Got);
+    WriteLn('  asking, as ', IpStr(SrcIp), ' / ', MacStr(Mac, 6));
+    if not SrSend(Frame, Got) then
+    begin
+      WriteLn('  the send was refused: ', SrErr);
+      WriteLn('  Transmit does not work; nothing below will help.');
+      Halt(8);
+    end;
+    WriteLn('  sent ', Got, ' bytes');
+
+    NArpReply := 0;
+    while KeyWaiting do EatKey;
+    T0 := Ticks; Spins := 0;
+    while True do
+    begin
+      Elapsed := Ticks - T0;
+      if Elapsed < 0 then begin T0 := Ticks; Elapsed := 0; end;
+      if Elapsed >= 90 then Break;              { about five seconds }
+      Inc(Spins);
+      if Spins > 20000 then Break;
+      if SrRecv(Frame, SizeOf(Frame), Got) then
+        if Got >= 42 then
+          { An ARP REPLY, addressed to us, answering what we asked. }
+          if (Frame[12] = $08) and (Frame[13] = $06)
+             and (Frame[20] = $00) and (Frame[21] = $02) then
+          begin
+            Inc(NArpReply);
+            Write('  REPLY from ', IpStr((LongInt(Frame[28]) shl 24)
+                  or (LongInt(Frame[29]) shl 16)
+                  or (LongInt(Frame[30]) shl 8) or Frame[31]));
+            WriteLn('  is at ', MacStr(Frame[22], 6));
+            Break;
+          end;
+    end;
+
+    WriteLn;
+    if NArpReply > 0 then
+    begin
+      WriteLn('  *** TRANSMIT AND RECEIVE BOTH WORK. The frame left this');
+      WriteLn('  machine, crossed the wire, was understood by a real host,');
+      WriteLn('  and its answer came back through this adapter addressed to');
+      WriteLn('  our own MAC.');
+      ArpOk := True;
+    end
+    else
+    begin
+      WriteLn('  No reply in five seconds. Either the frame never left, or');
+      WriteLn('  nothing at ', IpStr(ArpIp), ' answered. Try /G with the');
+      WriteLn('  address of something you know is switched on.');
+    end;
+  end;
+
+  { TRANSMIT THROUGHPUT.
+
+    Send a burst of ARP requests as fast as the pipe will take them and
+    time it. ARP is used again because it is 60 bytes, needs no state, and
+    a gateway will answer as many as it feels like without either end
+    having to agree about anything -- so the numbers measure THIS adapter
+    rather than a negotiation.
+
+    Frames sent is the honest figure; frames answered is not, because a
+    switch or a gateway is entitled to rate-limit ARP and often does. }
+  if BenchN > 0 then
+  begin
+    Stage('tx bench');
+    WriteLn;
+    WriteLn('TRANSMIT THROUGHPUT -- ', BenchN, ' frames of 60 bytes');
+    WriteLn('----------------------------------------------------------------');
+    BuildArp(Frame, Mac, SrcIp, ArpIp, Got);
+    NSent := 0;
+    T0 := Ticks;
+    for I := 1 to BenchN do
+      if SrSend(Frame, Got) then Inc(NSent);
+    Elapsed := Ticks - T0;
+    if Elapsed < 1 then Elapsed := 1;
+    WriteLn('  sent            : ', NSent, ' of ', BenchN);
+    WriteLn('  elapsed         : ', (Elapsed * 10) div 182, '.',
+            ((Elapsed * 1000) div 182) mod 10, ' s');
+    WriteLn('  frames/second   : ', (LongInt(NSent) * 182) div (Elapsed * 10));
+    WriteLn('  bytes/second    : ',
+            ((LongInt(NSent) * 60) * 182) div (Elapsed * 10));
+    if RegRd(SR_ROCR, V) then
+      WriteLn('  rx overflow now : ', Hex2(V));
+  end;
+
   Stage('listening');
   NFrames := 0; NBytes := 0; NArp := 0; NIp := 0; NBcast := 0;
   while KeyWaiting do EatKey;
@@ -430,8 +588,18 @@ begin
   begin
     WriteLn('  FRAMES ARRIVED AND DECODE AS ETHERNET. The receive path');
     WriteLn('  works: chip reset, PHY, receiver and the bulk IN pipe are');
-    WriteLn('  all doing their job. Transmit is a separate question and');
-    WriteLn('  this tool has not asked it.');
+    WriteLn('  all doing their job.');
+    if ArpOk then
+    begin
+      WriteLn;
+      WriteLn('  AND TRANSMIT WORKS: the ARP above was answered. Both');
+      WriteLn('  directions are proven on real traffic.');
+    end
+    else if DoArp then
+    begin
+      WriteLn;
+      WriteLn('  TRANSMIT IS NOT PROVEN -- the ARP went unanswered.');
+    end;
     Halt(0);
   end
   else

@@ -44,7 +44,7 @@ echo --- USBPKT.COM
 nasm -f bin -Isrc\ src\usbpkt.asm -o bin\USBPKT.COM
 if errorlevel 1 goto failed
 
-for %%T in (netid usblink usbrecv usbsend pktscan pkttest pkttick rampchk ecmlink) do (
+for %%T in (netid usblink usbrecv usbsend pktscan pkttest pkttick rampchk ecmlink srlink dmprobe) do (
   echo --- %%T
   fpc -Tmsdos -Pi8086 -WmLarge -Fu"%TOOLS%" -FEbin -FUbin src\%%T.pas >nul
   if errorlevel 1 goto failed

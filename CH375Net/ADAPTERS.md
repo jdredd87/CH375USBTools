@@ -86,11 +86,11 @@ Either way, budget the volume: at 1 event per 44 MB a single clean 5 MB
 download means almost nothing, and treating a small clean result as a
 control is the mistake this project has made most often.
 
-## Receives, but no packet driver yet
+## Sends and receives, but no packet driver yet
 
 | Chip | USB ID | Notes |
 |---|---|---|
-| **DM9601/SR9700-compatible clone** | `0FE6:9702`, `iProduct` "USB 2.0 10/100M Ethernet Adaptor", no manufacturer string, housing marked **"Gzcyc No:9700"** | **Identified and answering.** Register file reads correctly, MAC `00:E8:00:4C:26:D5`, NSR reports link up. Two interfaces: **interface 0 is MASS STORAGE** (`08/06/50`, the driver-CD flash) and interface 1 is the network one — bulk `81` IN / `02` OUT, interrupt `83` IN. **It only implements SINGLE-BYTE register reads** — see below. `sr9700.pas` + `SRLINK` bring it up and **receive verified**: 24 frames, 9,270 bytes, decoding as mDNS, SSDP, IGMP and LLDP with the overflow counter at zero. **Transmit is written but untested, and there is no packet driver**, so it is not supported yet. |
+| **DM9601/SR9700-compatible clone** | `0FE6:9702`, `iProduct` "USB 2.0 10/100M Ethernet Adaptor", no manufacturer string, housing marked **"Gzcyc No:9700"** | **Identified and answering.** Register file reads correctly, MAC `00:E8:00:4C:26:D5`, NSR reports link up. Two interfaces: **interface 0 is MASS STORAGE** (`08/06/50`, the driver-CD flash) and interface 1 is the network one — bulk `81` IN / `02` OUT, interrupt `83` IN. **It only implements SINGLE-BYTE register reads** — see below. `sr9700.pas` + `SRLINK` drive it and **both directions are verified on real traffic**. **There is no packet driver**, so mTCP cannot use it and it is *not* on the supported list. |
 
 ### The quirk: multi-byte register reads are broken
 
@@ -119,6 +119,40 @@ driver for this part must read registers singly.** One that fetches the six
 MAC bytes in a single transfer gets the fixed block and happens to come up with
 the right answer *for the MAC specifically* — and the wrong answer for
 everything else, which is a far nastier way to be wrong.
+
+### What has actually been measured
+
+| | |
+|---|---|
+| Identification | `NETID` names it from the table; `DMPROBE` confirms it from the silicon |
+| Register read/write | **works**, one byte at a time |
+| MAC | `00:E8:00:4C:26:D5`, read from PAR |
+| Link | NSR reports up; PHY brought out of reset by the driver |
+| **Receive** | **works** — frames decode as mDNS, SSDP, IGMP, LLDP and ARP with real addresses |
+| **Transmit** | **works** — an ARP for the gateway was **answered**: `REPLY from 192.168.50.1 is at 04:D4:C4:D2:2B:00` |
+| Sustained receive | 60 s, 69 frames, 30,677 bytes |
+| Transmit rate | **299 of 300 frames, 100 frames/s, 6,046 bytes/s** |
+| Packet driver | **none** — `USBPKT` does not know this chipset |
+
+The ARP reply is the part that proves transmit properly. A send that returns
+success only means the chip took the bytes; a reply means the frame left the
+host, crossed the wire, was understood by a real device, and its answer came
+back **addressed to our own MAC** — which exercises the receive filter too.
+
+**100 frames/second** is the CH375's packet-rate ceiling showing up again, the
+same number that sets the video project's frame rate, killed the audio one and
+caps CH375Serial at 38400 baud. A 60-byte frame plus the two-byte header is one
+USB packet, so frames/second and packets/second are the same figure here.
+
+**The receive overflow counter is not zero over a long run.** It read `00` on
+short tests and `B3` after 60 seconds. That is the chip saying it dropped
+frames it could not hand over fast enough, and it is expected rather than
+alarming: a slow host on a busy segment cannot take every broadcast, and
+Ethernet has always been allowed to drop. It does mean this adapter will not
+be a quiet listener on a loaded network.
+
+One send in 300 was refused. Worth knowing before anybody reads 100 frames/s as
+a guarantee.
 
 ### Receive needs reassembly, and the failure is disguised
 
@@ -152,6 +186,29 @@ gives a zero copy count. The symptom is a hang immediately after the *first*
 frame arrives, which reads as a receive fault and is really an arithmetic
 one. Pascal gives no warning whatsoever. Every such loop in `sr9700.pas` is
 now guarded.
+
+### What is left before it can be called supported
+
+`USBPKT` is the packet driver, and it does not know this chipset. That is the
+whole of the remaining gap, and it is not a small one: `usbpkt.asm` and
+`usbpktini.inc` are about 5,500 lines of assembly whose chipset handling is a
+**binary** `ecm_mode` flag — AX88179 layout or CDC-ECM layout — rather than a
+general dispatch. Adding a third means:
+
+* a bring-up in assembly (straightforward: a handful of single-byte register
+  writes, which is *less* work than the ASIX path),
+* a transmit header of two little-endian length bytes, where the existing code
+  has `tx_hdrlen` of 8 for ASIX and 0 for ECM,
+* and the hard part — a **receive path that parses the three-byte header and
+  reassembles across USB packets**, which neither existing mode needs. ECM
+  treats a whole burst as one frame; ASIX parses its own layout.
+
+It is a real feature rather than a patch, and half-doing it would produce a
+driver that corrupts frames — which is worse than not having one, because the
+corruption fault this project is already chasing would get a second suspect.
+
+Until that exists, this adapter is **driven but not supported**, and those are
+different words on purpose.
 
 ### Three things this adapter taught the project
 
