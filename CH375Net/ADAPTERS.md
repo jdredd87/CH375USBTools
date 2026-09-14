@@ -86,6 +86,38 @@ Either way, budget the volume: at 1 event per 44 MB a single clean 5 MB
 download means almost nothing, and treating a small clean result as a
 control is the mistake this project has made most often.
 
+## Tried, and it does not answer any protocol we know
+
+| Chip | USB ID | Notes |
+|---|---|---|
+| unidentified | `0FE6:9702`, `iProduct` "USB 2.0 10/100M Ethernet Adaptor", no manufacturer string | **Not driven, and not a Davicom.** `0FE6` is the Kontron/ICS range that DM9601 rebadges live in, so the obvious guess was a DM96xx — `DMPROBE` disproves it. Every framing of the Davicom register read returns **the same eight bytes whatever register is asked for**, so nothing is decoding the index. Two interfaces: **interface 0 is MASS STORAGE** (class `08/06/50`) — the driver-CD flash — and interface 1 is the network one, bulk `81` IN / `02` OUT plus interrupt `83` IN. |
+
+### Two things this adapter taught the project
+
+**A success status is not evidence the device understood the request.** The
+CH375 reads into its own 64-byte buffer, and a device that answers an
+unimplemented vendor request with a zero-length data stage leaves the
+*previous* transfer's bytes sitting there. `DMPROBE`'s first version duly
+printed this adapter's own configuration-descriptor bytes as though they were
+a register file — and they looked plausible right up until the MAC came out as
+`03:08:00:00:00:00`, which is an endpoint descriptor.
+
+Poisoning the caller's buffer does not catch it either, because the chip
+faithfully copies its own stale buffer over the poison. The test that works is
+**A/B/A**: read register 0, read register 10h, read register 0 again. Only
+*the two reads of 0 agree and the middle one differs* proves the device is
+really decoding `wIndex`. A buffer will happily agree with itself all day.
+
+`DMPROBE` now sweeps every plausible framing and judges each one that way
+rather than stopping at the first `INT_SUCCESS` — which is what the first
+version did, and why it never tried the alternatives at all.
+
+**The first bulk endpoint pair is not necessarily the network one.** This
+device's mass-storage interface comes first and has its own bulk IN/OUT. A
+driver that takes the first pair it finds binds to the flash chip and then
+waits forever for frames from something that has never heard of Ethernet, with
+nothing in the failure pointing at the cause. Pick by exclusion, not by order.
+
 ## Tried, and it is NOT what its ID says
 
 **ASIX AX88179A** -- `0B95:1790`, the *same USB ID as the AX88179*, and the
