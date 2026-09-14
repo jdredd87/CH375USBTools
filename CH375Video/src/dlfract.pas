@@ -396,7 +396,7 @@ begin
   if UseFpu then
     WriteLn('          about half the speed of the integer path')
   else
-    WriteLn('          8087 on this machine, and enough bits for this view');
+    WriteLn('          coprocessor here, and enough bits for this view');
   if Zoom > 1 then
     WriteLn('view      seahorse valley, zoom ', Zoom, 'x')
   else

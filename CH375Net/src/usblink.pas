@@ -82,15 +82,16 @@ begin
   WriteLn('link -- and prints what came back at each stage.  Nothing goes');
   WriteLn('resident and no frames are moved; USBRECV does that.');
   WriteLn;
-  WriteLn('WHY 10BASE-T.  This is a gigabit chip and the machine driving');
-  WriteLn('it is an 8086.  Every byte crosses the ISA bus one IN at a');
-  WriteLn('time through a 64-byte window, so one 1514-byte frame is 24');
-  WriteLn('separate CH375 transfers.  A gigabit link feeding a receiver');
-  WriteLn('that slow does not degrade gracefully -- it overruns and stays');
-  WriteLn('overrun.  Dropping to 10 Mbps throws away no performance that');
-  WriteLn('was ever available.  It is done by restricting what the PHY');
-  WriteLn('advertises, not by forcing the speed, so the switch at the far');
-  WriteLn('end negotiates normally instead of guessing.');
+  WriteLn('WHY 10BASE-T.  This is a gigabit chip and the host driving');
+  WriteLn('it is orders of magnitude slower.  Every byte crosses the ISA');
+  WriteLn('bus one IN at a time through a 64-byte window, so one');
+  WriteLn('1514-byte frame is 24 separate CH375 transfers.  A gigabit');
+  WriteLn('link feeding a receiver that slow does not degrade');
+  WriteLn('gracefully -- it overruns and stays overrun.  Dropping to');
+  WriteLn('10 Mbps throws away no performance that was ever available.');
+  WriteLn('It is done by restricting what the PHY advertises, not by');
+  WriteLn('forcing the speed, so the switch at the far end negotiates');
+  WriteLn('normally instead of guessing.');
   WriteLn;
   WriteLn('On a 486 that calculation changes, which is why /G exists.');
   WriteLn;
@@ -196,7 +197,7 @@ begin
 
   WriteLn;
   if Giga then
-    WriteLn('Leaving the PHY at gigabit (/G).  Expect overruns on an 8086.')
+    WriteLn('Leaving the PHY at gigabit (/G).  Expect overruns on a slow host.')
   else
     WriteLn('Restricting the PHY to 10BASE-T');
   AxNegotiate(not Giga);
