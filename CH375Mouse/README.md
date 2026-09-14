@@ -11,6 +11,90 @@ one driver that does both: it carries this driver's `INT 33h` implementation
 unchanged, minus the PS/2 BIOS emulation below. If you need Windows 3.x to
 find a pointing device, this is still the driver to load.
 
+## Two kinds of mouse, one INT 33h
+
+`USBMOUSE.COM` drives a **USB HID** mouse plugged straight into the CH375.
+The tools below drive a **serial** mouse on a **USB-to-serial adapter**
+plugged into the CH375 — a different device, a different protocol, and the
+same CH375 card.
+
+| | |
+|---|---|
+| `USBMOUSE.COM` | USB HID mouse. Resident INT 33h driver. **Working** |
+| `MOUPROBE.EXE` | serial mouse on a USB-to-serial adapter: find it, identify its protocol, prove it moves. **Working** |
+
+**Nothing in the serial half is tied to one adapter.** `src/dmouse.pas` knows
+the two serial mouse protocols and nothing else — it never sees a USB device.
+Underneath it, `CH375Serial`'s `dser.pas` dispatches on the adapter family
+(CDC-ACM, FTDI, PL2303, CH34x, CP210x, Keyspan), so a mouse driver written
+against `dmouse` works on whatever adapters that unit can drive, now and
+later.
+
+The thing that could have locked it to one adapter is that **a serial mouse
+is powered from RTS and DTR**. An adapter that will not raise them leaves the
+mouse dead, and a dead mouse is indistinguishable from a wrong baud rate, a
+bad cable, or an unsupported adapter. `SerOpen` raises both on every family
+and `SerClose` drops both, so a close/open pair is a power cycle with no
+adapter-specific code — which is also what makes a mouse announce itself.
+
+Verified on a Keyspan (InnoSys) `06CD:0121` against a three-button mouse:
+
+```
+  device              : 06CD:0121
+  family              : Keyspan (InnoSys)
+  configuration index : 1
+  bulk IN / OUT       : 81 / 01
+
+  87 FE 06 FB 06  87 F6 06 F7 02  87 F2 00 FC FC  ...
+
+  reports decoded    : 196
+  bytes resynced past: 0
+  net movement       : X -99  Y 258
+  buttons seen       : left right middle
+```
+
+**196 reports and zero resyncs** is the number that matters: the decoder
+stayed in phase for the whole run, which is much stronger evidence than the
+movement totals.
+
+### The first run looked like a dead mouse and was a wrong number
+
+882 bytes arrived and fitted no protocol. The mouse was perfect. The line was
+open at **seven** data bits and the mouse is Mouse Systems, which is eight —
+so bit 7 was being stripped and every `87h` packet header arrived as `07h`,
+every `FFh` movement byte as `7Fh`.
+
+That is the same trap DOSBridge's `docs/input.md` records from the other
+direction: this machine's own mouse is Mouse Systems, CuteMouse probed it,
+settled on Microsoft, and INT 33h then reported no movement at all.
+
+So `MOUPROBE` diagnoses it by name rather than shrugging:
+
+```
+  THE FRAMING IS WRONG AND THE MOUSE IS FINE.
+  These bytes are a Mouse Systems stream read through SEVEN
+  data bits: 87h headers arriving as 07h, every fifth byte...
+```
+
+The detector took two attempts, and the first was wrong arithmetic rather
+than a wrong idea. Counting header-shaped bytes across the whole stream is
+weak — small movement values pass a header mask perfectly well. The signal is
+**period**: every Nth byte is a header and the ones between are not. The
+first version then compared the best phase against the *sum* of the other
+four, which is the wrong denominator, and scored a textbook capture 13
+against 30 and rejected it.
+
+The rule that survived, chosen after looking at the numbers rather than
+before: **exactly one phase is entirely headers.** On a correct capture that
+is 13 of 13 against 0; on the same mouse read through seven bits it is 13 of
+13 against a next-best of 9 of 13 — so a ratio test cannot work and
+"all of them, and only here" can. Requiring *exactly one* such phase is what
+rejects a buffer of zeros, where every phase matches.
+
+It was validated offline against both captures plus a synthetic Microsoft
+stream, an all-zero buffer and noise, before being built — which cost
+nothing and saved asking a human to wave a mouse at it five more times.
+
 **Version 1.0.0** · StevenC · <https://github.com/jdredd87/CH375USBTools>
 
 `USBMOUSE.COM` is a resident DOS mouse driver that gets its input from a USB

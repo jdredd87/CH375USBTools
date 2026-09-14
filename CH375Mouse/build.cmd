@@ -37,6 +37,11 @@ REM  CH375USBTOOLS\src and is found with -Fu.  Its .ppu is compiled into
 REM  THIS project's bin\, so the projects share source and never a
 REM  compiled unit.
 set TOOLS=%~dp0..\CH375USBTOOLS\src
+REM  dser.pas -- the USB-to-serial adapter layer -- lives in CH375Serial
+REM  and is shared rather than copied, for the reason the serial mouse
+REM  tools exist at all: the mouse half must not know which adapter it
+REM  is behind.
+set SERIAL=%~dp0..\CH375Serial\src
 if not exist bin mkdir bin
 
 echo --- USBMOUSE.COM
@@ -48,7 +53,15 @@ for %%T in (chdiag mousetst evtest ps2test tickchk clkchk mdemo clicktst) do (
   fpc -Tmsdos -Pi8086 -WmLarge -Fu"%TOOLS%" -FEbin -FUbin src\%%T.pas >nul
   if errorlevel 1 goto failed
 )
-if exist bin\*.a   del /q bin\*.a
+
+
+REM  The SERIAL mouse tools.  They need dser as well, so they build in their
+REM  own pass rather than widening the -Fu of everything above.
+for %%T in (mouprobe) do (
+  echo --- %%T
+  fpc -Tmsdos -Pi8086 -WmLarge -Fu"%TOOLS%" -Fu"%SERIAL%" -Fusrc -FEbin -FUbin src\%%T.pas >nul
+  if errorlevel 1 goto failed
+)if exist bin\*.a   del /q bin\*.a
 if exist bin\*.o   del /q bin\*.o
 if exist bin\*.ppu del /q bin\*.ppu
 
