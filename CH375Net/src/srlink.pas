@@ -54,12 +54,28 @@ var
   Secs    : Integer;
   Promisc : Boolean;
   ShowHex : Boolean;
+  NoReset : Boolean;
   MassIf  : Integer;
   Frame   : array[0..1599] of Byte;
   Got     : Word;
   NFrames, NBytes, NArp, NIp, NBcast: LongInt;
   T0, Elapsed, Spins: LongInt;
   V       : Byte;
+
+{ Say where we are, on STDERR.
+
+  Everything this program prints normally goes to stdout, which the bridge
+  redirects into a file that only arrives when the job finishes. A job that
+  never finishes therefore produces NOTHING, and two hangs in a row said
+  exactly as much about where they happened as a blank screen would.
+
+  DOS 6.22 cannot redirect handle 2, which is usually a nuisance and is
+  the whole point here: these land on the real screen where a camera can
+  read them even when the machine never gets to the end. }
+procedure Stage(const T: ShortString);
+begin
+  Write(StdErr, '  [', T, ']'#13#10);
+end;
 
 procedure Quieten;
 begin
@@ -223,11 +239,13 @@ begin
     WriteLn('    /S=n  seconds to listen, default 15');
     WriteLn('    /M    promiscuous (default on)');
     WriteLn('    /X    hex-dump each frame');
+    WriteLn('    /N    skip the chip reset (it is the prime suspect for');
+    WriteLn('          the adapter dropping off the bus mid-bring-up)');
     HelpTail;
     Halt(0);
   end;
 
-  Secs := 15; Promisc := True; ShowHex := False;
+  Secs := 15; Promisc := True; ShowHex := False; NoReset := False;
   for I := 1 to ParamCount do
   begin
     S := ParamStr(I);
@@ -238,6 +256,7 @@ begin
       'S': Secs := NumArg(S, 4);
       'M': Promisc := True;
       'X': ShowHex := True;
+      'N': NoReset := True;
       'V': Trace := @Narrate;
       'T': CtrlTrace := True;
     end;
@@ -252,6 +271,7 @@ begin
     NEXT program reports "no CH375 at 0260" on a card that is fitted. }
   ExitProc := @Quieten;
 
+  Stage('chip');
   if not ChipHere(Base) then
   begin
     ChipReset;
@@ -262,6 +282,7 @@ begin
       Halt(BU_NO_CHIP);
     end;
   end;
+  Stage('enumerate');
   Rc := BusUp;
   if Rc <> BU_OK then
   begin
@@ -274,6 +295,7 @@ begin
   PID := DevDesc[10] or (Word(DevDesc[11]) shl 8);
   Fld('device', Hex4(VID) + ':' + Hex4(PID));
 
+  Stage('descriptors');
   Rc := GetDescr(DT_CONFIG, 0, 0, Big, 9, BigLen);
   if BigLen < 9 then
   begin
@@ -289,6 +311,7 @@ begin
     Halt(5);
   end;
 
+  Stage('set config');
   Rc := SetConfig(Big[5]);
   if Rc <> INT_SUCCESS then
   begin
@@ -296,6 +319,7 @@ begin
     Halt(5);
   end;
 
+  Stage('find endpoints');
   FindNet;
   if (SrIn = 0) or (SrOut = 0) then
   begin
@@ -308,12 +332,15 @@ begin
   Fld('bulk IN / OUT', Hex2(SrIn or $80) + ' / ' + Hex2(SrOut));
 
   { Composite device: claim the function before talking to it. }
+  Stage('set interface');
   Rc := CtrlNoData($01, REQ_SET_IFACE, 0, Word(SrIf));
   Fld('SET_INTERFACE', Dec1(SrIf) + ' -> ' + StatusName(Rc));
 
   WriteLn;
   WriteLn('BRING-UP');
   WriteLn('----------------------------------------------------------------');
+  Stage('chip bring-up');
+  SrNoReset := NoReset;
   if not SrBringUp(Promisc) then
   begin
     WriteLn('  failed: ', SrErr);
@@ -321,6 +348,7 @@ begin
   end;
   WriteLn('  reset, PHY released, receiver enabled and read back');
 
+  Stage('read MAC');
   if not ReadMac(Mac) then
   begin
     WriteLn('  cannot read the MAC: ', SrErr);
@@ -348,6 +376,7 @@ begin
   WriteLn;
   WriteLn('LISTENING FOR ', Secs, 's');
   WriteLn('----------------------------------------------------------------');
+  Stage('listening');
   NFrames := 0; NBytes := 0; NArp := 0; NIp := 0; NBcast := 0;
   while KeyWaiting do EatKey;
   T0 := Ticks; Spins := 0;
@@ -369,16 +398,25 @@ begin
     end;
     if KeyWaiting then begin EatKey; WriteLn('  stopped.'); Break; end;
 
+    { A heartbeat on stderr, driven by the SPIN COUNT rather than the
+      clock, because the question it answers is "is this loop turning at
+      all". A time-driven tick cannot tell a loop that is spinning from
+      one blocked inside a single call -- both look silent -- and that is
+      exactly the distinction two hangs have now turned on. }
+    if (Spins mod 25) = 0 then Write(StdErr, '.');
+
     if SrRecv(Frame, SizeOf(Frame), Got) then
       if Got > 0 then
       begin
         Inc(NFrames);
         Inc(NBytes, Got);
+        Write(StdErr, '#');
         if NFrames <= 20 then ShowFrame(Frame, Got);
       end;
   end;
 
   WriteLn;
+  Stage('done');
   WriteLn('RESULT');
   WriteLn('----------------------------------------------------------------');
   Fld('frames', Dec1(NFrames));

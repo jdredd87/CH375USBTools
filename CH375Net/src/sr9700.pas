@@ -88,6 +88,8 @@ var
   SrIn  : Byte;             { bulk IN endpoint number }
   SrOut : Byte;             { bulk OUT endpoint number }
   SrTogIn, SrTogOut: Byte;
+  { Set before SrBringUp to skip the NCR reset -- see the note there. }
+  SrNoReset: Boolean;
 
 { One register, one control transfer. See the note at the top. }
 function  RegRd(Reg: Byte; var V: Byte): Boolean;
@@ -182,10 +184,22 @@ begin
   SrBringUp := False;
   SrErr := '';
 
-  { Reset. The bit clears itself; give it time rather than polling, since
-    a chip in reset is not obliged to answer a read either. }
-  if not RegWr(SR_NCR, NCR_RST) then Exit;
-  DelayMs(20);
+  { THE RESET IS OPTIONAL, and it is the prime suspect for the hangs.
+
+    NCR_RST resets the network chip, and on a part where the USB front end
+    shares that reset the device drops off the bus in the middle of its own
+    bring-up. Every transfer after it then talks to something that is no
+    longer there, and the CH375 is left mid-transaction. That is exactly
+    the shape of the two hangs this cost.
+
+    A freshly enumerated adapter has just been reset by the bus anyway, so
+    skipping it loses very little and is the safer default until the
+    hardware has been watched through a bring-up that completes. }
+  if not SrNoReset then
+  begin
+    if not RegWr(SR_NCR, NCR_RST) then Exit;
+    DelayMs(20);
+  end;
 
   { Bring the PHY out of reset. Held low, then released, then a moment to
     let it start its own auto-negotiation. }
@@ -229,14 +243,35 @@ begin
   SrBringUp := True;
 end;
 
+{ Take ONE Ethernet frame off the bulk IN pipe, reassembling it across as
+  many 64-byte USB packets as it takes.
+
+  THE HEADER IS ONLY ON THE FIRST PACKET. That is the whole of the bug
+  this replaced. A frame of any real size spans several packets, and the
+  continuation packets are pure data with no header at all -- so a reader
+  that treats every packet as a fresh frame decodes the first one
+  correctly and then reads the MIDDLE of the frame as an Ethernet header.
+
+  The symptom is unmistakable once seen and baffling until then: a listing
+  full of plausible frames interleaved with ones whose "MAC addresses" are
+  ASCII text. 70:73:32:2E:63:6F is not an address, it is "ps2.co" out of
+  the middle of somebody's SSDP announcement. Every one of those was a
+  continuation packet.
+
+  The length in the header counts the four-byte CRC, so the frame proper
+  is Len-4 and the CRC is read and thrown away rather than handed up. }
 function SrRecv(var Buf; Max: Word; var Got: Word): Boolean;
 var
-  Tmp : array[0..127] of Byte;
-  N   : Byte;
-  R   : Integer;
-  Len : Word;
-  P   : PByte;
-  I   : Word;
+  Tmp   : array[0..79] of Byte;
+  N     : Byte;
+  R     : Integer;
+  Total : Word;         { header + frame + CRC, as the chip counts it }
+  Want  : Word;         { bytes of ETHERNET FRAME we want }
+  Have  : Word;         { frame bytes copied so far }
+  Seen  : Word;         { bytes of this frame's total consumed }
+  P     : PByte;
+  I     : Word;
+  Guard : Integer;
 begin
   Got := 0;
   SrRecv := False;
@@ -247,14 +282,52 @@ begin
   SrRecv := True;                 { the pipe answered; maybe with nothing }
   if N < SR_RX_OVERHEAD then Exit;
 
-  { Header: status, length low, length high. The length counts the CRC. }
-  Len := Word(Tmp[1]) or (Word(Tmp[2]) shl 8);
-  if Len < 4 then Exit;
-  Dec(Len, 4);
-  if Len > Max then Len := Max;
-  if Word(N) - SR_RX_OVERHEAD < Len then Len := Word(N) - SR_RX_OVERHEAD;
-  for I := 0 to Len - 1 do P[I] := Tmp[SR_RX_OVERHEAD + I];
-  Got := Len;
+  Total := Word(Tmp[1]) or (Word(Tmp[2]) shl 8);
+  if Total < 4 then Exit;         { header present, no frame behind it }
+  Want := Total - 4;              { drop the CRC }
+  if Want = 0 then Exit;
+  if Want > Max then Want := Max;
+
+  { Whatever of the frame arrived in this first packet. }
+  Have := Word(N) - SR_RX_OVERHEAD;
+  Seen := Have;
+  if Have > Want then Have := Want;
+
+  { GUARDED, because Have can legitimately be zero -- a packet carrying
+    nothing but the three-byte header -- and "for I := 0 to Have - 1" on a
+    Word then counts to 65535 and writes 64 KB through the pointer.
+
+    That is the SECOND time the same wrap has taken the machine down in
+    this one function, in two different places, so it is worth naming the
+    shape rather than just fixing the instance: a Word loop bound that can
+    be zero is a 64 KB memory smear waiting to happen, and Pascal gives no
+    warning at all. Every such loop here is now guarded. }
+  if Have > 0 then
+    for I := 0 to Have - 1 do P[I] := Tmp[SR_RX_OVERHEAD + I];
+
+  { Keep pulling packets until the whole frame -- CRC included -- has been
+    consumed, so the NEXT call starts on a real header. Guarded by a count
+    as well as by the arithmetic: a chip that stops mid-frame must not
+    become an endless loop. }
+  Guard := 0;
+  while (Seen < Total) and (Guard < 40) do
+  begin
+    Inc(Guard);
+    R := EpIn(SrIn, SrTogIn, Tmp, SizeOf(Tmp), N);
+    if (R <> INT_SUCCESS) or (N = 0) then Break;
+    for I := 0 to Word(N) - 1 do
+    begin
+      if Seen + I >= Total then Break;
+      if Have < Want then
+      begin
+        P[Have] := Tmp[I];
+        Inc(Have);
+      end;
+    end;
+    Inc(Seen, Word(N));
+  end;
+
+  Got := Have;
 end;
 
 function SrSend(const Buf; Len: Word): Boolean;
@@ -303,4 +376,5 @@ begin
   SrErr := '';
   SrTogIn := $80;
   SrTogOut := $80;
+  SrNoReset := False;
 end.

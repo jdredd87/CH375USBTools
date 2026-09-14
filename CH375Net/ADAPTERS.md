@@ -86,11 +86,11 @@ Either way, budget the volume: at 1 event per 44 MB a single clean 5 MB
 download means almost nothing, and treating a small clean result as a
 control is the mistake this project has made most often.
 
-## Works at the register level, no driver yet
+## Receives, but no packet driver yet
 
 | Chip | USB ID | Notes |
 |---|---|---|
-| **DM9601/SR9700-compatible clone** | `0FE6:9702`, `iProduct` "USB 2.0 10/100M Ethernet Adaptor", no manufacturer string, housing marked **"Gzcyc No:9700"** | **Identified and answering.** Register file reads correctly, MAC `00:E8:00:4C:26:D5`, NSR reports link up. Two interfaces: **interface 0 is MASS STORAGE** (`08/06/50`, the driver-CD flash) and interface 1 is the network one — bulk `81` IN / `02` OUT, interrupt `83` IN. **It only implements SINGLE-BYTE register reads** — see below. No driver written yet. |
+| **DM9601/SR9700-compatible clone** | `0FE6:9702`, `iProduct` "USB 2.0 10/100M Ethernet Adaptor", no manufacturer string, housing marked **"Gzcyc No:9700"** | **Identified and answering.** Register file reads correctly, MAC `00:E8:00:4C:26:D5`, NSR reports link up. Two interfaces: **interface 0 is MASS STORAGE** (`08/06/50`, the driver-CD flash) and interface 1 is the network one — bulk `81` IN / `02` OUT, interrupt `83` IN. **It only implements SINGLE-BYTE register reads** — see below. `sr9700.pas` + `SRLINK` bring it up and **receive verified**: 24 frames, 9,270 bytes, decoding as mDNS, SSDP, IGMP and LLDP with the overflow counter at zero. **Transmit is written but untested, and there is no packet driver**, so it is not supported yet. |
 
 ### The quirk: multi-byte register reads are broken
 
@@ -119,6 +119,39 @@ driver for this part must read registers singly.** One that fetches the six
 MAC bytes in a single transfer gets the fixed block and happens to come up with
 the right answer *for the MAC specifically* — and the wrong answer for
 everything else, which is a far nastier way to be wrong.
+
+### Receive needs reassembly, and the failure is disguised
+
+A frame larger than one 64-byte USB packet spans several, and **the
+three-byte header is only on the first**. A reader that treats every packet
+as a fresh frame decodes the first correctly and then reads the *middle* of
+the frame as an Ethernet header — which produces a listing full of plausible
+frames interleaved with ones whose "MAC addresses" are ASCII text:
+
+```
+61 bytes  70:73:32:2E:63:6F -> 1F:92:01:69:62:6D  type 6D00
+```
+
+`70:73:32:2E:63:6F` is not an address, it is `ps2.co` out of the middle of
+somebody's SSDP announcement. Once `SrRecv` consumes the whole frame — CRC
+included — before looking for the next header, the listing is clean.
+
+### A Word loop bound that can be zero is a 64 KB memory smear
+
+This took the machine down **twice, in two different places in the same
+function**, and it is worth naming as a shape rather than as two bugs:
+
+```pascal
+for I := 0 to Len - 1 do ...     { Len is a Word. Len = 0 counts to 65535. }
+```
+
+Both instances were reachable from perfectly ordinary traffic — the chip
+sends a header whose length is exactly 4 (header plus CRC, no payload) as a
+routine way of saying "nothing here", and a packet carrying only the header
+gives a zero copy count. The symptom is a hang immediately after the *first*
+frame arrives, which reads as a receive fault and is really an arithmetic
+one. Pascal gives no warning whatsoever. Every such loop in `sr9700.pas` is
+now guarded.
 
 ### Three things this adapter taught the project
 
