@@ -768,8 +768,28 @@ ue_addrdone:
                                          ; configuration, so skip the one
                                          ; below and join the common tail
 ue_ecmbad:
-        call    ecm_undo
+        call    link_defaults
 ue_novecm:
+
+        ; ---- SR9700 / DM9601, asked next and for the same reason ----
+        ;
+        ; Before a configuration is chosen, because sr_probe reads the
+        ; configuration descriptor to find the endpoints and SELECTING A
+        ; CONFIGURATION IS NOT A READ-ONLY ACT -- the note above ecm_probe
+        ; records what that cost to learn.
+        ;
+        ; After ECM rather than before it, because a device that offers
+        ; both should use the class path: it is the one that does not
+        ; depend on a table of USB IDs being right.
+        call    sr_probe
+        jc      short ue_nosr
+        call    sr_bring
+        jc      short ue_srbad
+        jmp     __uev10                  ; sr_bring has chosen its own
+                                         ; configuration; join the tail
+ue_srbad:
+        call    link_defaults
+ue_nosr:
 
         ; ---- the configuration descriptor, for its value ----
         mov     byte [cs:bu_step], 25
@@ -1796,7 +1816,7 @@ ecb_filtok:
         call    crlf
 
         ; ---- tell the resident half which protocol it is speaking ----
-        mov     byte [ecm_mode], 1
+        mov     byte [link_mode], LM_ECM
         mov     word [tx_hdrlen], 0
         mov     word [drv_nptr], drv_ecm
         mov     al, [ecm_epi]
@@ -1838,14 +1858,19 @@ ecb_no:
         ret
 
 ; --------------------------------------------------------------------------
-; Put everything back, for a device that claimed ECM and would not come up
-; on it.  Falling back to the vendor path beats refusing to load: on a part
-; that offers both, one working path is the entire point.
+; Put everything back to the AX88179 defaults, for a device that claimed a
+; path and would not come up on it.  Falling back to the vendor path beats
+; refusing to load: on a part that offers both, one working path is the
+; entire point.
+;
+; Called by BOTH the ECM and the SR9700 arms, which is why it is no longer
+; called ecm_undo -- a shared routine with one path's name on it is how the
+; next person ends up writing a second copy.
 ; --------------------------------------------------------------------------
-ecm_undo:
+link_defaults:
         push    cs
         pop     ds
-        mov     byte [ecm_mode], 0
+        mov     byte [link_mode], LM_AX
         mov     word [tx_hdrlen], 8
         mov     word [drv_nptr], drv_name
         mov     byte [tok_in], (EP_BULK_IN << 4) | PID_IN
@@ -1857,6 +1882,657 @@ ecm_undo:
         ; immediately below the call site goes on to read and select the
         ; vendor one.  The earlier version re-selected cfg_val_e, which at
         ; this point has not been read yet.
+        ret
+
+; ==========================================================================
+; SR9700 / DM9601.
+;
+; The third chipset, and the only one here chosen by USB ID rather than by
+; what the device says about itself.  It has no class descriptor, no
+; functional descriptor and no vendor string worth trusting -- the adapter
+; this was written against introduces itself as "Gzcyc No:9700" -- so a
+; table is the only thing that can identify it.
+;
+; The reference implementation is sr9700.pas, which drives this same part
+; in both directions on real traffic.  Everything below is that unit
+; translated, and where the two disagree the Pascal is right, because the
+; Pascal is the one that has been measured.
+; ==========================================================================
+
+SR_RD_REGS      equ 0x00         ; vendor IN:  read registers
+SR_WR_REG       equ 0x03         ; vendor OUT: write ONE register, no data
+                                 ;             stage -- value in wValue
+SR_NCR          equ 0x00
+SR_NSR          equ 0x01
+SR_RCR          equ 0x05
+SR_PAR          equ 0x10         ; the MAC, six registers
+SR_PRR          equ 0x1F         ; PHY reset
+NCR_RST         equ 0x01
+NSR_LINKST      equ 0x40
+PRR_PHY_RST     equ 0x01
+RCR_RXEN        equ 0x01
+RCR_PRMSC       equ 0x02
+RCR_ALL         equ 0x08
+RCR_DIS_CRC     equ 0x10
+RCR_DIS_LONG    equ 0x20
+
+; Receive on, drop runts and oversize, drop frames whose CRC is wrong --
+; and NEITHER promiscuous NOR all-multicast.  DIS_CRC means "discard a frame
+; whose CRC is bad", not "strip the CRC"; the four bytes still arrive and
+; rx_have_sr trims them.
+;
+; THE REASON IS CORRECTNESS, NOT SPEED, and that correction is worth
+; leaving here because the speed argument was written first, was very
+; persuasive, and was wrong.
+;
+; It went: this chip cannot aggregate, so a 1442-byte frame is twenty-three
+; 64-byte reads and about 16 ms of an 8086-class machine, paid whether
+; anything wants the frame or not -- and a listing of this segment is
+; roughly 60% multicast, with the chip's own overflow counter reading B3
+; after sixty seconds of it.  Every one of those facts is true.  The
+; conclusion drawn from them was not.
+;
+; Measured, which is the whole reason /M exists: the same 5 MB download
+; over the same segment took 307.9 s with this filter and 312.3 s with
+; all-multicast added.  1.4%.  Multicast is simply not a large share of the
+; frames arriving while a download is in progress, however large a share it
+; is of an idle one.
+;
+; So the filter stays narrow for the ordinary reason -- a packet driver
+; delivers what its clients asked for, and an application that wants
+; multicast says so through set_multicast_list -- and NOT because it buys
+; throughput, because it does not.
+SR_WANT_RCR     equ RCR_RXEN | RCR_DIS_LONG | RCR_DIS_CRC
+
+sr_setup:   times 8 db 0
+sr_data:    db 0
+sr_cfgv:    db 0                 ; bConfigurationValue to select
+sr_if:      db 0                 ; the network interface number
+sr_epi:     db 0                 ; bulk IN endpoint number
+sr_epo:     db 0                 ; bulk OUT
+sr_massif:  db 0xFF              ; the mass-storage interface, if there is
+                                 ; one.  Reported, not used -- see sr_walk
+sr_reg:     db 0
+sr_len:     db 0
+sr_rcrv:    db 0                 ; the RCR value actually written, so the
+                                 ; read-back compares against what was sent
+                                 ; rather than against the default
+
+; --------------------------------------------------------------------------
+; One register, one control transfer.  AL = register, BL = value.
+;
+; THE BLOCK FORM IS NOT USED ANYWHERE HERE, AND THAT IS DELIBERATE.  A
+; multi-byte read on the clone returns the PAR block from 10h whatever
+; wIndex says -- ask for eight bytes at 28h and the MAC comes back.  A
+; driver that read the six MAC bytes in one go would therefore get the
+; RIGHT answer for the MAC and the wrong answer for every other register,
+; which is a far nastier way to be wrong than failing outright.  Six
+; transfers to read a MAC costs nothing next to that.
+; --------------------------------------------------------------------------
+sr_wr8:
+        push    cs
+        pop     ds
+        push    cs
+        pop     es
+        mov     [sr_reg], al
+        mov     di, sr_setup
+        mov     byte [di+0], 0x40        ; OUT, vendor, device
+        mov     byte [di+1], SR_WR_REG
+        mov     [di+2], bl               ; wValue  = the VALUE
+        mov     byte [di+3], 0
+        mov     [di+4], al               ; wIndex  = the REGISTER
+        mov     byte [di+5], 0
+        mov     byte [di+6], 0           ; wLength = 0: no data stage
+        mov     byte [di+7], 0
+        mov     si, sr_setup
+        mov     di, sr_data
+        xor     bl, bl
+        call    ctrl_out_r
+        pushf
+        ; ctrl_out_r / ctrl_in_r put the chip back to 00 on the way out.
+        ; Inside usb_enum 8F is the ambient policy and the step after this
+        ; one depends on it -- ecm_probe's comment records what forcing 00
+        ; here did to the configuration read.  usb_enum's own tail drops it
+        ; to 00 exactly once, as it always did.
+        mov     al, 0x8F
+        call    set_retry
+        popf
+        ; DS BACK TO CS BEFORE RETURNING, and this is not tidiness.  The
+        ; transfer helpers below take DS:SI as the setup packet and none of
+        ; them promises to put DS back, so a caller that reads one of its
+        ; own variables straight after a register access is reading it out
+        ; of whatever segment happened to survive.  Nothing about that
+        ; fails visibly -- it reads a plausible byte from somewhere else --
+        ; which is the expensive kind of wrong.
+        push    cs
+        pop     ds
+        ret
+
+; AL = register -> BL = value.
+sr_rd8:
+        push    cs
+        pop     ds
+        push    cs
+        pop     es
+        mov     [sr_reg], al
+        mov     di, sr_setup
+        mov     byte [di+0], 0xC0        ; IN, vendor, device
+        mov     byte [di+1], SR_RD_REGS
+        mov     byte [di+2], 0
+        mov     byte [di+3], 0
+        mov     [di+4], al               ; wIndex = the register
+        mov     byte [di+5], 0
+        mov     byte [di+6], 1           ; ONE byte.  See above.
+        mov     byte [di+7], 0
+        mov     byte [sr_data], 0
+        mov     si, sr_setup
+        mov     di, sr_data
+        mov     bl, 1
+        call    ctrl_in_r
+        pushf
+        mov     al, 0x8F
+        call    set_retry
+        popf
+        push    cs
+        pop     ds                       ; see sr_wr8
+        jc      short sr_rd8_no
+        mov     bl, [cs:sr_data]
+        clc
+        ret
+sr_rd8_no:
+        xor     bl, bl
+        stc
+        ret
+
+; --------------------------------------------------------------------------
+; The USB IDs.  Every one of these is the same register map; what differs
+; between the genuine parts and the clones is which access FORMS they
+; bother to implement, and the single-byte form above is the one they all
+; have.
+; --------------------------------------------------------------------------
+sr_ids:
+        dw 0x0FE6, 0x9700        ; CoreChip SR9700
+        dw 0x0FE6, 0x9702        ; SR9700 clone, single-byte registers only
+        dw 0x0FE6, 0x8101        ; DM9601 (Kontron)
+        dw 0x07AA, 0x9601        ; Corega FEther USB-TXC
+        dw 0x0A46, 0x9601        ; Davicom DM9601
+        dw 0x0A46, 0x0268        ; Davicom DM9601
+        dw 0x0A46, 0x9000        ; DM9000E
+        dw 0x0A46, 0x1269        ; DM9601, another badge
+        dw 0
+
+; --------------------------------------------------------------------------
+; Walk the configuration descriptor in rxbuf.  CX = how many bytes.
+;
+; SKIPPING THE MASS-STORAGE INTERFACE IS THE WHOLE JOB.  These adapters put
+; a flash holding the driver CD FIRST, with its own bulk pair, so a walk
+; that takes the first bulk endpoints it meets binds the packet driver to a
+; disk.  Nothing about that fails loudly: the endpoints are real, the
+; transfers succeed, and the adapter simply never delivers a frame.
+;
+; This mirrors FindNet in srlink.pas rather than inventing a rule, because
+; FindNet is the version that has been run against the hardware.
+; --------------------------------------------------------------------------
+sr_walk:
+        mov     byte [sr_if], 0
+        mov     byte [sr_epi], 0
+        mov     byte [sr_epo], 0
+        mov     byte [sr_massif], 0xFF
+        mov     di, cx                   ; DI = end of the buffer
+        xor     si, si                   ; SI = offset of this descriptor
+        mov     bl, 0xFF                 ; BL = current interface number
+        mov     bh, 0                    ; BH = its class
+srw_loop:
+        mov     ax, si
+        inc     ax
+        inc     ax
+        cmp     ax, di
+        ja      short srw_fin
+        mov     al, [si + rxbuf]         ; bLength
+        or      al, al
+        je      short srw_fin            ; a zero length never advances
+        mov     [ecw_len], al
+        xor     ah, ah
+        mov     cx, si
+        add     cx, ax
+        cmp     cx, di
+        jbe     short srw_inb            ; runs off the end: nothing in it
+; A trampoline, because srw_end is a long way below and an 8086 conditional
+; jump is short only.  ecm_walk needed the same thing for the same reason
+; and calls it ecw_fin; it sits after a `jbe` rather than before one so
+; nothing can fall into it.
+srw_fin:                                 ; can be trusted
+        jmp     srw_end
+srw_inb:
+        mov     al, [si + rxbuf + 1]     ; bDescriptorType
+        cmp     al, 4
+        je      short srw_iface
+        cmp     al, 5
+        je      short srw_ep
+srw_next:
+        mov     al, [ecw_len]
+        xor     ah, ah
+        add     si, ax
+        jmp     short srw_loop
+
+srw_iface:
+        cmp     byte [ecw_len], 9
+        jb      short srw_next
+        mov     bl, [si + rxbuf + 2]     ; bInterfaceNumber
+        mov     bh, [si + rxbuf + 5]     ; bInterfaceClass
+        cmp     bh, 0x08                 ; mass storage: the driver CD
+        jne     short srw_ifnet
+        cmp     byte [sr_massif], 0xFF
+        jne     short srw_next
+        mov     [sr_massif], bl
+        jmp     short srw_next
+srw_ifnet:
+        cmp     byte [sr_epi], 0
+        jne     short srw_next           ; already settled on one
+        mov     [sr_if], bl
+        jmp     short srw_next
+
+srw_ep:
+        cmp     byte [ecw_len], 7
+        jb      short srw_next
+        cmp     bh, 0x08
+        je      short srw_next           ; an endpoint belongs to whichever
+                                         ; interface descriptor last
+                                         ; preceded it, so this one is the
+                                         ; flash's
+        cmp     bl, [sr_if]
+        jne     short srw_next
+        mov     al, [si + rxbuf + 3]     ; bmAttributes
+        and     al, 3
+        cmp     al, 2                    ; bulk
+        jne     short srw_next
+        mov     al, [si + rxbuf + 2]     ; bEndpointAddress
+        test    al, 0x80
+        jne     short srw_epin
+        and     al, 0x0F
+        cmp     byte [sr_epo], 0
+        jne     short srw_next
+        mov     [sr_epo], al
+        jmp     short srw_next
+srw_epin:
+        and     al, 0x0F
+        cmp     byte [sr_epi], 0
+        jne     short srw_next
+        mov     [sr_epi], al
+        jmp     short srw_next
+
+srw_end:
+        cmp     byte [sr_epi], 0
+        je      short srw_no
+        cmp     byte [sr_epo], 0
+        je      short srw_no
+        clc
+        ret
+srw_no:
+        stc
+        ret
+
+; --------------------------------------------------------------------------
+; Is this an SR9700 / DM9601, and where are its endpoints?
+; CF clear = yes, and sr_cfgv / sr_if / sr_epi / sr_epo are filled in.
+; --------------------------------------------------------------------------
+sr_probe:
+        push    cs
+        pop     ds
+        cmp     byte [op_nosr], 0
+        je      short srp_go
+        stc
+        ret
+srp_go:
+        mov     al, 'D'
+        call    mark
+
+        ; The ID, out of the device descriptor usb_enum has already read.
+        mov     ax, [desc_buf + 8]       ; idVendor
+        mov     dx, [desc_buf + 10]      ; idProduct
+        mov     si, sr_ids
+srp_next:
+        mov     bx, [si]
+        or      bx, bx
+        je      short srp_no
+        cmp     bx, ax
+        jne     short srp_skip
+        mov     bx, [si+2]
+        cmp     bx, dx
+        je      short srp_hit
+srp_skip:
+        add     si, 4
+        jmp     short srp_next
+srp_no:
+        mov     al, 'n'
+        call    mark
+        stc
+        ret
+
+srp_hit:
+        ; 8F for the duration, as ecm_probe does and for the same reason: a
+        ; busy device answers a control transfer with NAK, and with the
+        ; chip set to REPORT those rather than absorb them one NAK reads as
+        ; a device that is not there.
+        mov     al, 0x8F
+        call    set_retry
+
+        ; Nine bytes first, for wTotalLength -- a configuration descriptor
+        ; only means anything entire, and the interface and endpoint
+        ; descriptors that this is looking for trail it.
+        xor     al, al                   ; index 0
+        mov     ah, 2                    ; CONFIGURATION
+        xor     dx, dx
+        mov     cl, 9
+        call    ecm_get
+        jc      short srp_bad
+        cmp     bh, 9
+        jb      short srp_bad
+        mov     al, [cs:rxbuf + 5]       ; bConfigurationValue
+        or      al, al
+        jne     short srp_cfgv
+        mov     al, 1
+srp_cfgv:
+        mov     [cs:sr_cfgv], al
+        mov     cx, [cs:rxbuf + 2]       ; wTotalLength
+        cmp     cx, ECM_MAXCFG
+        jbe     short srp_len
+        mov     cx, ECM_MAXCFG
+srp_len:
+        xor     al, al
+        mov     ah, 2
+        xor     dx, dx
+        call    ecm_get                  ; CL is already the length
+        jc      short srp_bad
+        or      bh, bh
+        je      short srp_bad
+        push    cs
+        pop     ds
+        mov     cl, bh
+        xor     ch, ch
+        call    sr_walk
+        jc      short srp_bad
+        mov     al, 'Y'
+        call    mark
+        clc
+        ret
+srp_bad:
+        mov     al, 'b'
+        call    mark
+        stc
+        ret
+
+; --------------------------------------------------------------------------
+; Select it, wake the PHY, open the receiver, read the MAC, and tell the
+; resident half which protocol it is speaking.
+; --------------------------------------------------------------------------
+sr_bring:
+        push    cs
+        pop     ds
+        mov     al, 'R'
+        call    mark
+        mov     al, 0x8F
+        call    set_retry
+
+        mov     byte [bu_step], 70
+        mov     al, CMD_SET_CONFIG
+        mov     ah, [sr_cfgv]
+        call    ch_hi
+        jnc     short srb_k1
+        jmp     srb_no                   ; srb_no is more than 128 bytes
+srb_k1:                                  ; away and an 8086 conditional
+        mov     cx, 50                   ; jump is short only
+        call    delay_ms
+
+        ; SET_INTERFACE to alt 0 on the NETWORK interface.  These adapters
+        ; have more than one interface and the flash is first, so this is
+        ; not the no-op it looks like on a single-function device.
+        mov     byte [bu_step], 71
+        push    cs
+        pop     es
+        mov     di, sr_setup
+        mov     byte [di+0], 0x01        ; OUT, standard, interface
+        mov     byte [di+1], 0x0B        ; SET_INTERFACE
+        mov     byte [di+2], 0           ; wValue = alternate setting 0
+        mov     byte [di+3], 0
+        mov     al, [sr_if]
+        mov     [di+4], al               ; wIndex = the interface
+        mov     byte [di+5], 0
+        mov     byte [di+6], 0
+        mov     byte [di+7], 0
+        mov     si, sr_setup
+        xor     bl, bl
+        call    ctrl_out_n
+        push    cs
+        pop     ds                       ; see sr_wr8
+        ; NOT fatal.  A device with one alt setting is entitled to STALL
+        ; this, and the Pascal driver ignores the answer too.
+        mov     cx, 20
+        call    delay_ms
+
+        ; THE CHIP RESET IS WHAT BRINGS THE LINK UP, and the first version
+        ; of this left it out.
+        ;
+        ; The reasoning for leaving it out was that NCR_RST resets the
+        ; network chip, and on a part whose USB front end shares that reset
+        ; the device would drop off the bus in the middle of its own
+        ; bring-up -- which is the shape of two hangs the Pascal driver
+        ; cost.  Plausible, and wrong here: the Pascal driver resets by
+        ; default and comes up at 10 Mbps every time.
+        ;
+        ; Measured, on the same adapter minutes apart.  Without the reset
+        ; the bring-up succeeds in every visible respect -- registers read
+        ; and write, the RCR sticks, the MAC comes back right -- and NSR
+        ; reads link DOWN and stays there through three seconds of waiting.
+        ; With it, NSR reads C1: link up, 10 Mbps.  A bring-up that gets
+        ; everything right except the one register nothing else depends on
+        ; is a good way to lose an evening to the cable.
+        mov     byte [bu_step], 72
+        mov     al, SR_NCR
+        mov     bl, NCR_RST
+        call    sr_wr8
+        jnc     short srb_krst
+        jmp     srb_no
+srb_krst:
+        mov     cx, 20
+        call    delay_ms
+
+        ; The PHY: held in reset, released, then left alone long enough to
+        ; get its own auto-negotiation started.
+        ;
+        ; delay_ticks, NOT delay_ms, and the ASIX bring-up learned this the
+        ; expensive way a few hundred lines below: delay_ms is a calibrated
+        ; spin loop and calibration is a promise, where delay_ticks waits
+        ; for the BIOS counter at 0040:006C to CHANGE and is therefore a
+        ; guaranteed minimum.  The AX88179's PHY reset failed
+        ; intermittently, at a numbered step, with nothing to show for it,
+        ; until that same substitution was made.
+        ;
+        ; 2 rather than 1, for the reason written there: delay_ticks 1 is
+        ; anything from 0 to 55 ms depending on where in the tick we
+        ; happened to arrive, so 2 is the first value that means anything.
+        mov     byte [bu_step], 73
+        mov     al, SR_PRR
+        mov     bl, PRR_PHY_RST
+        call    sr_wr8
+        jnc     short srb_k2
+        jmp     srb_no
+srb_k2:
+        mov     al, 2
+        call    delay_ticks
+        mov     al, SR_PRR
+        xor     bl, bl
+        call    sr_wr8
+        jnc     short srb_k3
+        jmp     srb_no
+srb_k3:
+        mov     al, 3
+        call    delay_ticks
+
+        mov     byte [bu_step], 74
+        mov     al, SR_RCR
+        mov     bl, SR_WANT_RCR
+        cmp     byte [op_mcast], 0
+        je      short srb_nomc
+        or      bl, RCR_ALL              ; /M
+srb_nomc:
+        cmp     byte [op_promisc], 0
+        je      short srb_rcr
+        or      bl, RCR_PRMSC | RCR_ALL  ; /P implies /M: a promiscuous
+                                         ; receiver that filtered multicast
+                                         ; would be a strange thing
+srb_rcr:
+        mov     [sr_rcrv], bl
+        call    sr_wr8
+        jnc     short srb_k4
+        jmp     srb_no
+srb_k4:
+        ; READ IT BACK.  A register write that does not stick is the
+        ; failure that wastes the most time later, because every symptom it
+        ; produces looks like a receive problem instead.
+        mov     byte [bu_step], 75
+        mov     al, SR_RCR
+        call    sr_rd8
+        jnc     short srb_k5
+        jmp     srb_no
+srb_k5:
+        cmp     bl, [sr_rcrv]
+        je      short srb_k6
+        mov     byte [bu_step], 76
+        jmp     srb_no
+srb_k6:
+
+        ; The MAC, six registers, six transfers.  See sr_rd8.
+        mov     byte [bu_step], 77
+        mov     di, mac
+        mov     al, SR_PAR
+srb_mac:
+        push    ax
+        push    di
+        call    sr_rd8
+        pop     di
+        pop     ax
+        jnc     short srb_macok
+        jmp     srb_no
+srb_macok:
+        mov     [di], bl
+        inc     di
+        inc     al
+        cmp     al, SR_PAR + 6
+        jb      short srb_mac
+
+        ; Say what the walk chose.  Every one of these is read from the
+        ; device and any of them being wrong produces the same symptom --
+        ; an endpoint that NAKs for ever -- so the numbers have to be
+        ; visible or the next fault costs another evening.
+        mov     dx, msg_r_geom
+        call    puts
+        mov     al, [sr_cfgv]
+        call    puthex
+        mov     dx, msg_r_if
+        call    puts
+        mov     al, [sr_if]
+        call    puthex
+        mov     dx, msg_e_eps
+        call    puts
+        mov     al, [sr_epi]
+        call    puthex
+        mov     dx, msg_e_epo
+        call    puts
+        mov     al, [sr_epo]
+        call    puthex
+        cmp     byte [sr_massif], 0xFF
+        je      short srb_nomass
+        mov     dx, msg_r_mass
+        call    puts
+        mov     al, [sr_massif]
+        call    puthex
+        mov     dx, msg_r_mass2
+        call    puts
+srb_nomass:
+        call    crlf
+
+        ; The link, for the record.  Read HERE and never again: this part
+        ; reports the link in a register rather than through an interrupt
+        ; endpoint, and a register read is a control transfer, which is not
+        ; a thing to do from inside a timer interrupt.
+        ;
+        ; WAITED FOR, because the first version of this printed DOWN every
+        ; time on a cable that was plainly connected.  Auto-negotiation
+        ; takes a second or two and the PHY was released about eighty
+        ; milliseconds earlier, so the read was simply too early -- and a
+        ; driver that says DOWN at the top of its own output sends the next
+        ; person to check the cable, the switch and the socket before
+        ; anything else.  Three seconds spent once, at install, to avoid
+        ; that is a bargain.
+        mov     byte [bu_step], 78
+        mov     bp, 30
+srb_lwait:
+        mov     al, SR_NSR
+        call    sr_rd8
+        jc      short srb_nolink
+        test    bl, NSR_LINKST
+        jne     short srb_lup
+        push    bx
+        mov     cx, 100
+        call    delay_ms
+        pop     bx
+        dec     bp
+        jnz     short srb_lwait
+srb_lup:
+        mov     dx, msg_r_link
+        call    puts
+        ; The RAW BYTE as well as the verdict.  A driver that prints only
+        ; "DOWN" has thrown away the one fact that separates "the cable is
+        ; out" from "this register is not the one I think it is", and those
+        ; two took a wrong turn each before the byte was printed.
+        push    bx
+        mov     al, bl
+        call    puthex
+        mov     dx, msg_r_nsr
+        call    puts
+        pop     bx
+        mov     dx, msg_l_down
+        test    bl, NSR_LINKST
+        je      short srb_lsay
+        mov     dx, msg_l_up
+srb_lsay:
+        call    puts
+        call    crlf
+srb_nolink:
+
+        ; ---- tell the resident half which protocol it is speaking ----
+        mov     byte [link_mode], LM_SR
+        mov     word [tx_hdrlen], SR_TX_OVERHEAD
+        mov     word [drv_nptr], drv_sr
+        mov     al, [sr_epi]
+        mov     [ep_in_n], al
+        mov     cl, 4
+        shl     al, cl
+        or      al, PID_IN
+        mov     [tok_in], al
+        mov     al, [sr_epo]
+        mov     [ep_out_n], al
+        mov     cl, 4
+        shl     al, cl
+        or      al, PID_OUT
+        mov     [tok_out], al
+        mov     byte [ep_int_n], 0       ; there is no notification endpoint
+        mov     byte [dev_live], 1
+        mov     byte [bu_step], 0
+        xor     al, al
+        call    set_retry
+        clc
+        ret
+srb_no:
+        mov     al, 'r'
+        call    mark
+        mov     al, [bu_step]
+        call    markhex
+        mov     al, 0x8F
+        call    set_retry
+        call    clr_ep0
+        stc
         ret
 
 ax_bringup:
@@ -1892,7 +2568,7 @@ bu_enumok:
         ; registers at all.  usb_enum decides that, because the question has
         ; to be asked before a configuration is selected -- see the long
         ; note there.
-        cmp     byte [cs:ecm_mode], 0
+        cmp     byte [cs:link_mode], LM_AX
         je      short bu_vendor
         mov     al, 'E'
         call    mark
@@ -2240,6 +2916,9 @@ op_verb:    db 0
 op_help:    db 0
 op_giga:    db 0
 op_noecm:   db 0        ; /X -- refuse the class path even where it exists
+op_nosr:    db 0        ; /D -- refuse the SR9700/DM9601 path
+op_mcast:   db 0        ; /M -- accept ALL multicast (SR9700 only)
+op_promisc: db 0        ; /P -- promiscuous (SR9700 only)
 op_test:    db 0
 
 ; /8 -- use the portable 8086 byte loops even on a CPU that has REP INSB
@@ -2348,6 +3027,37 @@ pa_s4x:
         mov     byte [op_noecm], 1
         jmp     near pa_more
 pa_s5:
+        ; /D -- never use the SR9700/DM9601 path.  The mirror of /X, and it
+        ; exists for the same reason: the only honest way to show that a
+        ; chipset path is the thing making a difference is to be able to
+        ; turn it off on the same adapter and watch what stops.
+        cmp     al, 'D'
+        jne     short pa_s5d
+        mov     byte [op_nosr], 1
+        jmp     near pa_more
+pa_s5d:
+        ; /M -- accept all multicast on the SR9700.  It exists to make the
+        ; claim in ADAPTERS.md testable rather than asserted: the filter is
+        ; supposed to be the throughput setting on this part, and the only
+        ; way to show that is to turn it the other way on the same adapter,
+        ; on the same segment, and time the same download.
+        cmp     al, 'M'
+        jne     short pa_s5m
+        mov     byte [op_mcast], 1
+        jmp     near pa_more
+pa_s5m:
+        ; /P -- promiscuous on the SR9700.  Useful in its own right for a
+        ; capture tool, and it settles the one difference left between this
+        ; bring-up and SRLINK's: SRLINK writes RCR 3B and reads NSR C1,
+        ; every variant of this one so far writes 31 or 39 and reads 81.
+        ; The filter has no business affecting the link bit, which is
+        ; precisely why the possibility is worth one run rather than an
+        ; argument.
+        cmp     al, 'P'
+        jne     short pa_s5p
+        mov     byte [op_promisc], 1
+        jmp     near pa_more
+pa_s5p:
         ; /A, not /N: /N already means "do not hook the timer" and has
         ; done since before this switch existed.  Taking a letter that is
         ; already spoken for makes the old switch silently do something
@@ -2770,8 +3480,15 @@ init_gotmac:
         mov     byte [rx_tog], 0x80
         mov     byte [tx_tog], 0x80
 
-        cmp     byte [ecm_mode], 0
+        mov     al, [link_mode]
+        cmp     al, LM_AX
         je      short init_sayax
+        cmp     al, LM_SR
+        jne     short init_sayecm
+        mov     dx, msg_i_sr
+        call    puts
+        jmp     short init_saidit
+init_sayecm:
         ; No 'link up' here: ECM reports the link through its interrupt
         ; endpoint, on CHANGE, and a device that has just been configured
         ; has not changed anything yet.  Claiming a link we have not been
@@ -2906,15 +3623,24 @@ stat_have:
         mov     dx, msg_s_path
         call    puts
         mov     dx, msg_p_ax
-        cmp     byte [es:ecm_mode], 0
+        mov     al, [es:link_mode]
+        cmp     al, LM_AX
+        je      short stat_path
+        mov     dx, msg_p_sr
+        cmp     al, LM_SR
         je      short stat_path
         mov     dx, msg_p_ecm
 stat_path:
         call    puts
         call    crlf
 
-        cmp     byte [es:ecm_mode], 0
-        je      short stat_nolink
+        ; The link block belongs to ECM alone: it reports what the
+        ; NOTIFICATION endpoint has said, and the SR9700 has no
+        ; notification endpoint -- it keeps its link state in a register,
+        ; which is a control transfer away and therefore not something to
+        ; read from a status call that may run inside anything.
+        cmp     byte [es:link_mode], LM_ECM
+        jne     short stat_nolink
         mov     dx, msg_s_link
         call    puts
         mov     dx, msg_l_unk
@@ -3033,7 +3759,55 @@ stat_macskip:
         call    puts
         mov     ax, [es:tile_lim]
         call    putdecw
+        mov     dx, msg_s_tile4          ; the ')' belongs to the line that
+        call    puts                     ; opened it.  It used to be the
+                                         ; first character of the NEXT
+                                         ; message, so a run with no tiling
+                                         ; fault printed a bare ')' at the
+                                         ; start of an unrelated counter --
+                                         ; which reads as truncated output
 stat_notile:
+        call    crlf
+
+        mov     dx, msg_s_junk2
+        call    puts
+        mov     ax, [es:junk_len]
+        call    putdecw
+        mov     dx, msg_s_junk3
+        call    puts
+        mov     ax, [es:junk_at]
+        call    putdecw
+        mov     dx, msg_s_junk4
+        call    puts
+        mov     ax, [es:junk_burst]
+        call    putdecw
+        mov     dx, msg_s_junk5
+        call    puts
+        mov     al, [es:junk_prev]
+        xor     ah, ah
+        call    putdecw
+        mov     dx, msg_s_junk6
+        call    puts
+        mov     ax, [es:junk_prevleft]
+        call    putdecw
+        call    crlf
+
+        mov     dx, msg_s_resync
+        call    puts
+        mov     ax, [es:n_resync]
+        call    putdecw
+        call    crlf
+
+        mov     dx, msg_s_empty
+        call    puts
+        mov     ax, [es:n_empty]
+        call    putdecw
+        call    crlf
+
+        mov     dx, msg_s_flush
+        call    puts
+        mov     ax, [es:n_flush]
+        call    putdecw
         call    crlf
 
         mov     dx, msg_s_outside
@@ -3334,6 +4108,19 @@ msg_help:
         db '            collected, which tells an install fault from an', 13, 10
         db '            ISR one when both just look like a dead machine', 13, 10
         db 13, 10
+        db 'CHIPSET  it picks one itself: CDC-ECM from the descriptors, the', 13, 10
+        db '         SR9700/DM9601 from the USB ID, else the AX88179.', 13, 10
+        db '       /X   never use CDC-ECM      /D  never use the SR9700', 13, 10
+        db '            Turning a path off on an adapter that offers it is', 13, 10
+        db '            the only honest way to show it made the difference', 13, 10
+        db '       /P   SR9700 only: promiscuous -- every frame on the', 13, 10
+        db '            segment, for a capture tool.  Implies /M', 13, 10
+        db '       /M   SR9700 only: accept ALL multicast.  Off by default', 13, 10
+        db '            because a packet driver should deliver what was', 13, 10
+        db '            asked for, not everything.  Measured cost of', 13, 10
+        db '            turning it on: about 1% of throughput -- NOT the', 13, 10
+        db '            large number the per-frame arithmetic suggests', 13, 10
+        db 13, 10
         db 'VECTOR 60h IS REFUSED, and so is any vector already holding a', 13, 10
         db 'packet driver.  On this machine 60h is the network you are', 13, 10
         db 'reading this over; installing on top of it would take the box', 13, 10
@@ -3430,6 +4217,14 @@ msg_s_tok:     db '  tokens in=$'
 msg_s_tok2:    db ' out=$'
 msg_s_path:    db '  protocol=$'
 msg_p_ecm:     db 'CDC-ECM (class, from the descriptors)$'
+msg_p_sr:      db 'SR9700/DM9601 vendor (from the USB ID)$'
+msg_r_geom:    db 'SR9700: cfg $'
+msg_r_if:      db ' net if $'
+msg_r_mass:    db '  (mass storage on if $'
+msg_r_mass2:   db ')$'
+msg_r_link:    db 'SR9700: NSR $'
+msg_r_nsr:     db ' -- link $'
+msg_i_sr:      db 'SR9700/DM9601 adapter - using the vendor driver.', 13, 10, '$'
 msg_p_ax:      db 'AX88179 vendor$'
 msg_i_ecm:     db 'CDC-ECM adapter - using the class driver.', 13, 10, '$'
 msg_s_bmov:    db '  byte moves=$'
@@ -3447,7 +4242,16 @@ msg_s_over:    db '  bursts too big for the buffer=$'
 msg_s_tile:    db '  bursts whose frames did not tile=$'
 msg_s_tile2:   db '  (last ended at $'
 msg_s_tile3:   db ', wanted $'
-msg_s_outside: db ')  frames past the frame region=$'
+msg_s_tile4:   db ')$'
+msg_s_junk2:   db '  (last impossible length was $'
+msg_s_junk3:   db ' at offset $'
+msg_s_junk4:   db ' of $'
+msg_s_junk5:   db '; the burst before it ended $'
+msg_s_junk6:   db ' leaving $'
+msg_s_resync:  db ')  bursts realigned by search=$'
+msg_s_empty:   db '  empty records stepped over=$'
+msg_s_flush:   db '  transfers abandoned part-read=$'
+msg_s_outside: db '  frames past the frame region=$'
 msg_s_tog:     db '  reads rescued by flipping the toggle=$'
 msg_s_rxst:    db '  last bulk IN: status $'
 msg_s_rxlen:   db ', length $'

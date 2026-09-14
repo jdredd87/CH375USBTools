@@ -4,6 +4,176 @@ CH375Net -- StevenC -- https://github.com/jdredd87/CH375USBTools
 
 Versions live in the `VER` constant of each program.
 
+## USBPKT drives the SR9700, and mTCP runs over it
+
+The third chipset, and the first one chosen by USB ID rather than by what
+the device says about itself -- this part has no class descriptor, no
+functional descriptor and no vendor string worth trusting. The housing says
+"Gzcyc No:9700".
+
+**It works.** `USBPKT` enumerates it cold, skips the driver-CD flash on
+interface 0, brings the chip up, reads the MAC out of PAR one register at a
+time and goes resident. mTCP then runs over it: gateway 3/3, `8.8.8.8` 3/3,
+DNS resolving, HTTP GET complete.
+
+A **175 MB** volume campaign -- 35 independent 5 MB downloads across both
+transports -- came back byte-exact every time, zero mismatches. That matters
+beyond this adapter: the open corruption fault runs at roughly one event per
+44 MB on the AX88179, on this same CH375, ISA card and machine, so 175 MB
+clean here changes which half of the system is suspect.
+
+**Roughly 17-20 KB/s** against the AX88179's 22-23 KB/s. The range is
+deliberate: six timed 5 MB downloads in one night came in at 263, 270, 284,
+299 and 308 seconds, so run-to-run variance is about 15% and a single pair
+of runs cannot support a claim about a code change. Two such claims were
+made here before the replicates existed and both are withdrawn -- see
+below.
+
+### A counter that cost four lines and was the only thing that saw the bug
+
+The receive layout is neither the ASIX one nor the ECM one. There is no
+trailer, no packet count, no entry array and no computed stride -- so all
+of the ASIX machinery that looked like the model to follow applies to
+nothing here -- but the records ARE laid end to end, several to a transfer,
+and they have to be walked.
+
+That was the original plan and it was then talked out of, which is the part
+worth recording. A 60-second listen and a 5 MB download both showed exactly
+one frame per USB transfer, ended by a short packet, precisely as CDC-ECM
+behaves; the reference Pascal driver reads one frame per call and had
+decoded 69 consecutive frames correctly. On that evidence the loop was
+dropped for a straight-line parse.
+
+**The evidence was real and the conclusion was wrong.** This chip tiles
+when the frames are SMALL, so a download of full-size frames is a test that
+cannot see it. 5,054 frames went by without a single burst disagreeing with
+its own header. At 26,000 the counter had caught 229: bursts of 268 bytes
+carrying a 64-byte record, with two hundred bytes of good frames behind it
+going on the floor.
+
+Nothing else reported anything. TCP retransmitted what was dropped and
+every file still arrived byte-exact, so **the 100 MB of verified downloads
+that were supposed to qualify this driver would have passed either way**.
+The counter -- four lines, written into the straight-line parse precisely
+because that was the thing most likely to be wrong -- is the only reason it
+was ever seen.
+
+`rx_have_sr` now walks every record in the burst, and the residue counter
+dropped from 229 in 26,000 bursts to effectively nothing.
+
+### Four explanations for the remaining rejections, all measured at zero
+
+About 6% of bursts were still being thrown away because the first header in
+them was impossible -- a length under 4 or over 1518. Four mechanisms were
+proposed, implemented and measured:
+
+| | predicted | measured |
+|---|---|---|
+| `rx_drain` leaving the pipe part-read | `n_flush` > 0 | **0** |
+| the chip's empty-record convention | `n_empty` > 0 | **0** |
+| a record straddling a transfer boundary | `n_short` > 0 | **2 in 4,361** |
+| a lost phase carried between bursts | rejections fall | **266 vs 270** |
+
+Every one was plausible and every one was a guess wearing the clothes of an
+argument. What finally said something useful was an **attribution latch** --
+recording how the PREVIOUS burst ended, and printing it beside the failure.
+Rejections usually follow rejections, so there is a cascade and most of the
+cost is in it; but one sample shows a rejection after a burst that parsed
+cleanly, so "a rare event knocks it out of phase for good" is not the whole
+story either.
+
+The cause is still unexplained. The effect is now recovered: a rejected
+burst is **searched** for a record boundary on a sharp test -- a length in
+range that lands exactly on the end of the burst -- which recovers about
+30% of them and takes frames delivered above one per burst. Extending the
+search to accept a boundary landing on another plausible header is the
+cheap next step.
+
+**Three counters were added or exposed along the way, and that is the real
+content of this entry.** `n_flush` existed all along and `/S` never printed
+it. One counter was doing duty for two different faults that mean opposite
+things -- a synchronisation failure and a truncation -- and splitting them
+took the diagnosis from 4.7% of something to 212-of-213 of one specific
+thing in a single run. Neither the driver's own error counters nor any
+download could see any of this: **every one of the 29 verified downloads
+came back byte-exact throughout**, including the ones taken while the
+driver was dropping 6% of its bursts.
+
+### `ecm_mode` is now `link_mode`, with three named values
+
+The flag was a byte tested as `<> 0` and meaning "ECM", which works exactly
+until somebody adds a third mode -- at which point every one of those tests
+is quietly wrong in a different way. It is now `LM_AX` / `LM_ECM` / `LM_SR`
+and every test names the mode it wants. `ecm_undo` became `link_defaults`
+for the same reason: a shared routine with one path's name on it is how the
+next person ends up writing a second copy.
+
+### Two things the hardware said and reasoning did not
+
+**The chip reset was left out on a theory, and the theory was wrong.**
+`NCR_RST` resets the network chip, and on a part whose USB front end shares
+that reset the device drops off the bus mid-bring-up -- which is the shape
+of two hangs the Pascal driver cost. Plausible, and false here: the Pascal
+driver resets by default and comes up every time. Put back.
+
+**`NSR` says the link is down while the link plainly works.** It reads `81`
+after `USBPKT`'s bring-up and `C1` after `SRLINK`'s, on the same adapter
+minutes apart -- the difference is bit 6, `LINKST`, with the speed bit and
+everything else agreeing. Nothing depends on it, and the driver goes on to
+carry mTCP, so it is a fault in the bit rather than in the path. It now
+prints the **raw byte** beside the verdict, because a driver that says only
+DOWN sends the next person to check the cable, the switch and the socket
+before anything else.
+
+The obvious explanation was tested and is not it. The PHY reset used
+`delay_ms`, a calibrated spin loop, where the ASIX bring-up a few hundred
+lines below carries a comment about that exact trap -- it failed
+intermittently at a numbered step until it was switched to `delay_ticks`,
+which waits on the BIOS counter and is a guaranteed minimum. Switching the
+SR9700's PHY delays the same way changed nothing: still `81`. The change is
+kept because a guaranteed minimum is right regardless, and it is recorded
+here as a fix that measured as nothing rather than as the answer.
+
+### A persuasive argument about the receive filter, measured and wrong
+
+The default receive filter is now the narrowest that works -- the address
+in PAR plus broadcast -- and the reason it changed is worth recording,
+because the reason it changed is not the reason it was changed *for*.
+
+The argument was: unlike the AX88179, this chip cannot aggregate. One frame
+per USB transfer means a 1442-byte frame is twenty-three 64-byte reads and
+about 16 ms of an 8086-class machine, **paid whether anything wants the
+frame or not**. A listing of this segment is roughly 60% multicast -- mDNS,
+SSDP, IGMP, LLDP -- and the chip's own receive overflow counter read `B3`
+after sixty seconds of it. Every one of those facts is true, and the
+conclusion that the filter must therefore be the throughput setting on this
+part does not follow from them.
+
+`/M` was added specifically so the claim could be tested instead of
+asserted: it turns all-multicast back on, so the same download can be timed
+both ways on the same adapter on the same segment. **307.9 s narrow,
+312.3 s wide. 1.4%, which is nothing.** Multicast is a large share of an
+idle segment and a small share of the frames arriving while a download is
+actually running.
+
+So the filter stays narrow for the ordinary reason -- a packet driver
+delivers what its clients asked for, and an application that wants
+multicast says so through `set_multicast_list` -- and the throughput claim
+is gone. It had already been written into three files before it was
+measured, which is the whole argument for measuring first.
+
+### `/T` is why this cost one evening and not three
+
+`USBPKT /T` runs the entire bring-up and then quits **without going
+resident**. Every iteration of the geometry, the register writes, the MAC
+and the link register went through it, so the part that can take the machine
+down was only exercised once it had nothing left to get wrong. The bring-up
+worked on the first hardware run.
+
+`/D` is the new switch that refuses this path, mirroring `/X` for ECM. The
+only honest way to show that a chipset path is what makes a difference is to
+be able to turn it off on the same adapter and watch what stops.
+
 ## Used in anger: telnet, FTP, HTTP and ping over CDC-ECM
 
 Driven at the keyboard rather than by a harness, and that is the point of

@@ -52,12 +52,24 @@ C:\CH375> PING 8.8.8.8
 ```
 
 Nothing to add to `CONFIG.SYS`, nothing to configure. `USBPKT` enumerates the
-device over the CH375, brings the AX88179 up, and goes resident. `USBPKT /U`
-unloads it again.
+device over the CH375, works out which of three chipsets it is holding, brings
+it up and goes resident. `USBPKT /U` unloads it again.
 
-For a **CDC-ECM** adapter there is `ECMLINK` instead — a class driver rather
-than a packet driver, so it proves the adapter works but does not yet carry
-mTCP. See below.
+The three, and how each is chosen:
+
+| | how it is recognised | |
+|---|---|---|
+| **CDC-ECM** | from the device's own descriptors | any adapter that speaks the class |
+| **SR9700 / DM9601** | from the USB ID | it says nothing else that would identify it |
+| **AX88179 / 178A** | the fallback | the reference part |
+
+ECM is asked for first, because a class path does not depend on a table of USB
+IDs being right. `/X` refuses the ECM path and `/D` refuses the SR9700 one,
+which is how to show that a chipset path is what makes a difference on an
+adapter that offers more than one.
+
+`ECMLINK` and `SRLINK` are the matching diagnostics — they bring an adapter up
+and report every step, without going resident.
 
 The rest of this file is the engineering: what was measured, what was tried
 and thrown away, and why the code looks the way it does. It is a notebook,
@@ -1942,9 +1954,17 @@ deliberately separate -- an adapter it knows but cannot drive says so in
 one line, which is far more use than a bring-up that fails halfway and
 leaves you wondering about the cable.
 
-**Only the AX88179 is implemented today.** The most valuable one to add
-next is CDC-ECM, because that is a standard: one driver, every adapter that
-speaks it, instead of another entry in a table of vendor quirks.
+**Three are implemented: CDC-ECM, SR9700/DM9601 and the AX88179/178A.**
+The most valuable was CDC-ECM, because it is a standard -- one driver, every
+adapter that speaks it, instead of another entry in a table of vendor quirks --
+and it went in first for that reason.
+
+The SR9700 went in second and taught the more useful lesson: **the layouts that
+look alike are not alike.** Its receive framing reads like the ASIX one from a
+distance and behaves like the ECM one -- a single frame per USB transfer, ended
+by a short packet, with a three-byte header in front. Adding a chipset here is
+mostly a question of which of those two shapes it has, and the answer is worth
+measuring rather than inferring.
 
 ## What is not done
 

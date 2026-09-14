@@ -189,29 +189,36 @@ begin
     Halt(6);
   end;
 
-  { The DM9601 family is a special case now: it has a driver, it just does
-    not have a PACKET driver. Saying "not implemented" would send somebody
-    away from a part that demonstrably moves frames. }
+  { The DM9601 family has a packet driver now.  It is still handled
+    separately from the ASIX default because the note below is worth
+    printing to anybody holding one of these: the register quirk is not
+    something a reader would guess, and it is the first thing to check if a
+    bring-up written from a datasheet does not work. }
   if Id.Family = nfDM9601 then
   begin
-    WriteLn('RECOGNISED.  Driven by SRLINK, but not by USBPKT yet.');
+    WriteLn('SUPPORTED.  USBPKT drives this family.');
     WriteLn;
-    WriteLn('sr9700.pas brings this family up and moves frames in both');
-    WriteLn('directions -- run SRLINK to see it receive, and to send an');
-    WriteLn('ARP and wait for the answer.  What it does NOT have is a');
-    WriteLn('resident packet driver, so mTCP cannot use it yet.');
+    WriteLn('Run USBPKT and point mTCP at it -- and use a COPY of MTCP.CFG,');
+    WriteLn('not the one the working network uses.  USBPKT /T brings the');
+    WriteLn('adapter up and quits WITHOUT going resident, which is the safe');
+    WriteLn('way to check a new one.  SRLINK is the diagnostic: it shows');
+    WriteLn('every step of the bring-up and can send an ARP and wait to be');
+    WriteLn('answered.');
     WriteLn;
     WriteLn('Note the quirk before writing anything: some of these clones');
     WriteLn('only decode a register index on SINGLE-BYTE reads, and answer');
-    WriteLn('a multi-byte read with a fixed block.  ADAPTERS.md has it.');
+    WriteLn('a multi-byte read with a fixed block -- so a driver that reads');
+    WriteLn('the six MAC bytes in one go gets the right MAC and the wrong');
+    WriteLn('everything else.  ADAPTERS.md has it.');
     WriteLn;
-    Halt(3);
+    Halt(0);
   end;
 
   WriteLn('RECOGNISED, BUT NOT IMPLEMENTED.');
   WriteLn;
-  WriteLn('This is a ', FamilyName(Id.Family), ', and only the ASIX');
-  WriteLn('AX88179 is driven today.  Nothing here will bring it up, and');
+  WriteLn('This is a ', FamilyName(Id.Family), '.  CDC-ECM, the');
+  WriteLn('SR9700/DM9601 and the ASIX AX88179/178A are driven today, and');
+  WriteLn('this is none of them.  Nothing here will bring it up, and');
   WriteLn('that is a gap in this project rather than a fault in the');
   WriteLn('adapter.');
   WriteLn;

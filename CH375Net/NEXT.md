@@ -121,6 +121,166 @@ instead of costing a retransmission.
 **What is left:** the CH375 read itself, or the contention between transmit
 and receive on it.
 
+## DONE: the SR9700 is in USBPKT, and mTCP runs over it
+
+This section was the plan. It is kept as the record because what the plan
+got wrong -- and what was then argued into it and back out of it against the
+evidence -- is worth more than the parts it got right.
+
+### What it actually took
+
+| | |
+|---|---|
+| identification | a USB-ID table -- this part has nothing else to go on |
+| endpoints | a descriptor walk that skips the class-`08` flash on interface 0 |
+| bring-up | NCR reset, PHY reset and release, one RCR write, read back |
+| MAC | six single-byte register reads out of PAR |
+| transmit | `tx_hdrlen` of 2 and one `stosw` |
+| receive | a loop over the records in a burst, plus a boundary search when the first header is impossible -- far more than the "twenty lines" first estimated, and the section below is why |
+| the flag | `ecm_mode` -> `link_mode` with three named values |
+
+Measured on hardware: gateway 3/3, `8.8.8.8` 3/3, DNS resolving, HTTP GET
+complete, and **5 MB byte-exact -- `RAMPCHK` verdict "exactly the ramp",
+zero mismatches**.
+
+**Timing needs replicates here.** Six timed 5 MB downloads came in at 263,
+270, 284, 299 and 308 seconds, so run-to-run variance is about 15% and a
+single before/after pair proves nothing about a code change. Two claims in
+this file were made from such pairs before the replicates existed, and both
+were withdrawn. Where a change has to be justified, use the frame counters:
+they do not drift.
+
+**175 MB byte-exact**, 35 independent 5 MB downloads across both transports,
+zero mismatches. That matters beyond this adapter: the open corruption fault
+runs at roughly one event per 44 MB on the AX88179, on this same CH375, ISA
+card and machine, so 175 MB clean here changes which half of the system is
+under suspicion.
+
+### The plan said "a linear tiling parse", and the plan was right
+
+The plan predicted "a linear tiling parse ... the only new thinking", on the
+assumption that a burst holds several `[header][frame]` records end to end.
+That is exactly what it holds.
+
+It was dropped anyway, on evidence that looked conclusive: a 60-second
+listen and a 5 MB download both showed one frame per USB transfer ended by
+a short packet, precisely as CDC-ECM behaves, and `sr9700.pas` reads one
+frame per call and had decoded 69 consecutive frames correctly. So the loop
+became a straight-line parse that delivered the first record and returned.
+
+**This chip tiles only when the frames are SMALL.** A download of full-size
+frames is a test that structurally cannot see it. 5,054 frames passed with
+no burst disagreeing with its own header; by 26,000 the counter had caught
+229 -- bursts of 268 bytes holding a 64-byte record, two hundred bytes of
+good frames behind it going on the floor.
+
+The counter was four lines, written into the straight-line parse because
+that parse's assumption was the thing most likely to be wrong. **Nothing
+else reported anything.** TCP retransmitted the losses, every file arrived
+byte-exact, and the 100 MB volume test that was meant to qualify this
+driver would have passed either way. A driver that silently drops 0.9% of
+bursts and 4.6% to misparse is not one any download would have failed.
+
+The lesson is not "tile parsers are hard". It is that **the measurement
+which would have vindicated the driver was incapable of failing**, and the
+only instrument that could see the fault was the one put there on purpose
+to doubt the assumption. Put a counter on whatever you have assumed about a
+chipset's framing before you put a download through it.
+
+### The plan said to skip the chip reset. That was wrong too.
+
+It repeated the Pascal driver's suspicion that `NCR_RST` takes the USB front
+end down with it. The Pascal driver resets **by default** and works; without
+the reset the bring-up succeeds in every visible respect and the link
+register never comes up.
+
+### What the plan got right
+
+* `ecm_probe`/`ecm_bring` is the template, and it slots in at the same place
+  in the enumeration, before a configuration has been chosen.
+* Skipping the mass-storage interface is the whole of the endpoint job.
+* Single-byte register reads, always.
+* `SET_RETRY 00` before any endpoint is polled.
+* **`/T` is the reason this cost one evening.** The bring-up ran on the
+  first hardware attempt and every later iteration was non-resident, so the
+  machine was never at risk while the geometry was still being argued about.
+
+### The receive parse still rejects about 3% of bursts -- START HERE
+
+This is the one piece of unfinished work, and it is well instrumented.
+
+A burst is thrown away when the first header in it is impossible -- a length
+under 4 or over 1518. Four mechanisms were proposed for it, implemented, and
+every one measured at zero: `rx_drain` leaving the pipe part-read (`n_flush`
+= 0), the chip's empty-record convention (`n_empty` = 0), a record straddling
+a transfer boundary (`n_short` = 2 in 4,361), and a lost phase carried
+between bursts (266 rejections against 270 without it).
+
+What is known, from the attribution latch that records how the PREVIOUS
+burst ended: rejections **usually** follow rejections, so there is a cascade
+and most of the cost is in it -- but not always. One sample shows a rejection
+following a burst that parsed **cleanly**, which rules out "a rare event
+knocks it out of phase and it never recovers" as the whole story. Both
+readings are in the latch; it prints the previous outcome as 0 clean,
+1 truncated, 2 impossible, 3 residue. A captured burst held a valid
+record at offset 7 whose length ran to exactly the end of the burst
+(10 + 1518 = 1528), which is what the recovery search is built on.
+
+The search recovers about 30% -- 61 of 206 in one run. **The cheap next step
+is to widen its acceptance test**: it currently requires the candidate
+record to end exactly on the end of the burst, and accepting one that ends
+on another plausible header would cover the bursts that hold more than one
+record. After that, the question worth answering is what starts a cascade in
+the first place, and `n_over` (bursts too big for the 2 KB buffer, 9-17 per
+5 MB) is the only counter that moves at anything like the right rate.
+
+Everything needed is already in `/S`: `reads with an impossible length`,
+`bursts realigned by search`, the last rejected length with its offset and
+burst size, and how the previous burst ended.
+
+### A second thing measured and wrong: the receive filter
+
+The narrow receive filter went in with a persuasive argument attached --
+one frame per USB transfer, 16 ms a frame paid whether it was wanted or
+not, a segment that is 60% multicast, an overflow counter reading B3. All
+true. `/M` was added so the conclusion could be tested rather than
+asserted, and the same 5 MB download took **307.9 s narrow and 312.3 s
+wide**. 1.4%.
+
+The filter stays narrow because a packet driver should deliver what its
+clients asked for, not because it buys throughput. The claim had already
+been written into three files before it was measured.
+
+### The one thing left open: NSR says DOWN
+
+`NSR` reads `81` after `USBPKT`'s bring-up and `C1` after `SRLINK`'s, on the
+same adapter minutes apart, differing only in bit 6 (`LINKST`) -- while the
+driver goes on to carry mTCP. It is reported and nothing depends on it, and
+the raw byte is printed beside the verdict so the next person does not spend
+an evening on the cable.
+
+Two candidates have been tested and ruled out. The PHY reset used `delay_ms`, a
+calibrated spin loop, and the ASIX path a few hundred lines below carries a
+comment about that exact trap -- it failed intermittently until switched to
+`delay_ticks`, a guaranteed minimum. Same switch here changed nothing,
+still `81`. Kept anyway, because a guaranteed minimum is right regardless.
+And all-multicast, via `/M`, also reads `81`.
+
+And promiscuous, via `/P`, also reads `81` -- which was the last filter
+bit `SRLINK` set and this driver did not. `SRLINK` writes RCR `3B` and
+reads `C1`; `USBPKT` writes `31`, `39` or `3B` and reads `81` every time.
+So the filter is not it either, and the bus-reset sequence has been read
+side by side and matches: 100 ms, mode 7, 40 ms hold, mode 6, wait for
+connect, 200 ms.
+
+Three candidates excluded is worth more than a guess, and it is where this
+stops: nothing depends on the bit, the raw byte is printed, and a status
+register that disagrees with a data path carrying volume byte-exact is not
+the most useful thing to spend the next evening on.
+
+Otherwise: a read taken in a window `SRLINK` never occupies, or one
+bring-up leaving the PHY subtly different. Neither is shown.
+
 ## What to do next
 
 ### 0. Where this was left

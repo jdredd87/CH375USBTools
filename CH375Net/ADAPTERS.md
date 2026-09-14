@@ -47,6 +47,7 @@ SUPPORTED.
 |---|---|
 | **Works** | driven, on hardware, by this project |
 | **Works (class)** | driven by `ecm.pas` and `USBPKT`'s class path, which read the device's own descriptors rather than knowing the chip. Any adapter offering CDC-ECM should land here |
+| **Works (vendor, by ID)** | driven by a chipset-specific bring-up that is selected from the USB ID, because the device says nothing about itself that would identify it |
 | **Should work** | same register map as something that works, not yet tried |
 | **Needs a driver** | understood part, no bring-up written for it yet |
 | **Unlikely** | needs more than the CH375 can give it |
@@ -59,6 +60,7 @@ SUPPORTED.
 |---|---|---|
 | ASIX AX88179A **over CDC-ECM** | `0B95:1790`, `iProduct` "AX88179A" | **Works fully.** `USBPKT` brings it up as a class device from `AUTOEXEC.BAT` and mTCP runs over it: verified 2026-09-10/11 with **130 MB** of downloads byte-exact (zero mismatches, 13 rounds of 10 MB) and, at the keyboard, **telnet, FTP, HTTP GETs and pings**. Discovered geometry: configuration 3, control interface 0, data interface 1 alt 1, bulk endpoints 2 IN / 3 OUT, MAC `A0:CE:C8:BC:0A:91` from the string descriptor -- `ECMLINK` and `USBPKT` agree independently. 22-23 KB/s. **Read the vendor-mode latch below before testing it.** Sold as a **USB-C** adapter, model `UTC-GE-AL-AX01`, used here through a USB-C-to-A adapter. |
 | ASIX AX88179 | `0B95:1790` | The reference part. Verified on **two physically different adapters** from different manufacturers — MACs `40:AE:30:6D:00:34` and `00:50:B6:B6:1C:64`. Both boot, link, and move data. **They do NOT move 5 MB byte-exact reliably**, which this row used to claim: about one 5 MB download in nine comes back the right length with a corrupt region, and every error counter reads zero while it happens. See the README. The claim was true of the runs it was written from and was never a property of the adapter. |
+| **DM9601/SR9700-compatible clone** | `0FE6:9702`, `iProduct` "USB 2.0 10/100M Ethernet Adaptor", no manufacturer string, housing marked **"Gzcyc No:9700"** | **Works.** `USBPKT` brings it up from a cold enumeration and goes resident, and mTCP runs over it: pings to the gateway and to 8.8.8.8 3/3, DNS resolving, and an HTTP GET byte-exact. Discovered geometry: configuration 1, **network interface 1** (interface 0 is the driver-CD flash and is skipped), bulk endpoints 1 IN / 2 OUT, MAC `00:E8:00:4C:26:D5` read from PAR one register at a time. **It only implements SINGLE-BYTE register reads** -- see below. **175 MB verified byte-exact** across 35 independent 5 MB downloads (see below). |
 
 ## Before you plug a new one in
 
@@ -86,11 +88,6 @@ Either way, budget the volume: at 1 event per 44 MB a single clean 5 MB
 download means almost nothing, and treating a small clean result as a
 control is the mistake this project has made most often.
 
-## Sends and receives, but no packet driver yet
-
-| Chip | USB ID | Notes |
-|---|---|---|
-| **DM9601/SR9700-compatible clone** | `0FE6:9702`, `iProduct` "USB 2.0 10/100M Ethernet Adaptor", no manufacturer string, housing marked **"Gzcyc No:9700"** | **Identified and answering.** Register file reads correctly, MAC `00:E8:00:4C:26:D5`, NSR reports link up. Two interfaces: **interface 0 is MASS STORAGE** (`08/06/50`, the driver-CD flash) and interface 1 is the network one — bulk `81` IN / `02` OUT, interrupt `83` IN. **It only implements SINGLE-BYTE register reads** — see below. `sr9700.pas` + `SRLINK` drive it and **both directions are verified on real traffic**. **There is no packet driver**, so mTCP cannot use it and it is *not* on the supported list. |
 
 ### The quirk: multi-byte register reads are broken
 
@@ -187,28 +184,150 @@ frame arrives, which reads as a receive fault and is really an arithmetic
 one. Pascal gives no warning whatsoever. Every such loop in `sr9700.pas` is
 now guarded.
 
-### What is left before it can be called supported
+### The packet driver, and the estimate that was wrong
 
-`USBPKT` is the packet driver, and it does not know this chipset. That is the
-whole of the remaining gap, and it is not a small one: `usbpkt.asm` and
-`usbpktini.inc` are about 5,500 lines of assembly whose chipset handling is a
+This row said for a while that `USBPKT` did not know this chipset and that
+teaching it "is a real feature rather than a patch", because `usbpkt.asm` and
+`usbpktini.inc` are about 5,500 lines of assembly whose chipset handling was a
 **binary** `ecm_mode` flag — AX88179 layout or CDC-ECM layout — rather than a
-general dispatch. Adding a third means:
+dispatch. The estimate was written from the outside, and it was too pessimistic
+by a wide margin. Three things made it smaller than it looked:
 
-* a bring-up in assembly (straightforward: a handful of single-byte register
-  writes, which is *less* work than the ASIX path),
-* a transmit header of two little-endian length bytes, where the existing code
-  has `tx_hdrlen` of 8 for ASIX and 0 for ECM,
-* and the hard part — a **receive path that parses the three-byte header and
-  reassembles across USB packets**, which neither existing mode needs. ECM
-  treats a whole burst as one frame; ASIX parses its own layout.
+* **The receive layout is neither of the two already there.** No trailer, no
+  packet count, no entry array, no computed stride — so the ASIX machinery that
+  looks like the model to follow applies to nothing — but the records are laid
+  end to end, several to a transfer, and have to be walked. About forty lines
+  against `rx_deliver`'s two hundred. **Read the section below before writing
+  one**: this chip tiles only when the frames are small, so the obvious test
+  cannot see it.
+* **`ecm_probe`/`ecm_bring` is a template.** It already sits at the one point in
+  the enumeration where a chipset gets to choose its own configuration, and the
+  whole of `sr_probe`/`sr_bring` slots in beside it the same way.
+* **`USBPKT /T` runs the entire bring-up and then quits without going
+  resident.** Every iteration of the geometry, the register writes and the MAC
+  was done that way, so the part that can take the machine down was only
+  exercised once it had nothing left to get wrong.
 
-It is a real feature rather than a patch, and half-doing it would produce a
-driver that corrupts frames — which is worse than not having one, because the
-corruption fault this project is already chasing would get a second suspect.
+What it needed in the end: a USB-ID table, a descriptor walk that skips the
+mass-storage interface, four register writes with a read-back, `tx_hdrlen` of 2
+with one `stosw`, and the receive parse above. `ecm_mode` became `link_mode`
+with three named values, because a flag tested as `<> 0` and meaning "ECM" is
+the kind of thing that works right up until somebody adds a third.
 
-Until that exists, this adapter is **driven but not supported**, and those are
-different words on purpose.
+### It tiles, but only with small frames -- and the test that would catch it
+
+The receive parser delivered the first record in a burst and returned, on
+evidence that looked conclusive: a 60-second listen and a 5 MB download both
+showed exactly one frame per USB transfer ended by a short packet, and
+`sr9700.pas` reads one frame per call and had decoded 69 consecutive frames
+correctly.
+
+**5,054 frames, no disagreement. At 26,000 frames, 229 of them** — bursts of
+268 bytes carrying a 64-byte record, two hundred bytes of good frames behind it
+being dropped. A download of full-size frames is a test that structurally cannot
+see this, because the chip only packs when the frames are small.
+
+The counter that caught it was four lines, added to the straight-line parse
+because that parse's assumption was the thing most likely to be wrong. Nothing
+else reported anything: TCP retransmitted the losses and every file arrived
+byte-exact, so **the volume test that was supposed to qualify the driver would
+have passed either way**. If you are adding a chipset here, put a counter on
+whatever you have assumed about its framing before you put a download through
+it.
+
+### Throughput, and two arguments about it that were wrong
+
+**Roughly 17-20 KB/s** against the AX88179's 22-23 KB/s on the same machine.
+The range is deliberate: six timed 5 MB downloads over the course of one night
+came in at 263, 270, 284, 299 and 308 seconds, so **run-to-run variance is about
+15%** and no single pair of runs can support a claim about a code change. Two
+such claims were made here before the replicates existed, and both are
+withdrawn.
+
+The first was that the **receive filter** is the throughput setting on this
+part, since this chip cannot aggregate -- a 1442-byte frame is twenty-three
+64-byte reads and about 16 ms -- and roughly 60% of this segment is multicast.
+`USBPKT /M` exists to test that rather than assert it: **307.9 s narrow, 312.3 s
+wide.** Multicast is a large share of an *idle* segment and a small share of
+what arrives during a download.
+
+The second was that walking every record rather than only the first was worth
+12%, from a single 307.9 s / 270.5 s pair. Later runs of strictly better parsers
+came in at 284.8 s and 299.0 s. The improvement is real but it is not visible at
+this sample size, and **the honest evidence for it is the frame counters, not
+the clock**: frames delivered per burst went above 1.0, which a stopwatch cannot
+argue with.
+
+**Over TFTP it is much worse, and that is the transport rather than the
+driver.** The same 5 MB on our own stack took about eight and a half minutes
+with **485 flow restarts**: `USBGET` re-requests from an offset when a block
+goes missing, so every loss costs a round trip and a re-ask instead of one
+retransmitted segment. Byte-exact at the end of it, but TCP is the better
+instrument for measuring this adapter.
+
+### The receive parse: four explanations, all measured at zero
+
+About 6% of bursts were being rejected because the first header in them was
+impossible -- a length under 4 or over 1518. Every frame in such a burst was
+dropped. TCP retransmitted them all, so **no download ever failed on this**, and
+the counters are the only reason it was visible at all.
+
+Four mechanisms were proposed, implemented, and measured:
+
+| | predicted | measured |
+|---|---|---|
+| `rx_drain` leaving the pipe part-read | `n_flush` > 0 | **0** |
+| the chip's empty-record convention (`len` = 4) | `n_empty` > 0 | **0** |
+| a record straddling a transfer boundary | `n_short` > 0 | **2 in 4,361** |
+| a lost phase carried between bursts | rejections fall | **266 vs 270** |
+
+All four were plausible. The attribution latch -- which records how the
+*previous* burst ended -- is what finally said something useful: rejections
+usually follow rejections, so there is a cascade and most of the cost is in it.
+Not always, though. One sample shows a rejection following a burst that parsed
+**cleanly**, which rules out "one rare event knocks the stream out of phase for
+good" as the whole explanation.
+
+So the cause is still unexplained and the effect is now recovered. A rejected
+burst is **searched** for a record boundary, on a sharp test: a length in range
+that lands exactly on the end of the burst. It recovers about 30% of them (61 of
+206 in one run) and takes frames delivered above one per burst. The rest are
+counted in `reads with an impossible length` and are the obvious next piece of
+work -- extending the search to accept a boundary that lands on another
+plausible header, rather than only on the burst end, is the cheap next step.
+
+### The link register says DOWN while the link plainly works
+
+`NSR` reads `81` after `USBPKT`'s bring-up and `C1` after `SRLINK`'s, on the
+same adapter minutes apart — the difference is bit 6, `LINKST`. Everything else
+in the register agrees, including the speed bit, and the RCR read-back proves
+the register file is being addressed correctly.
+
+It is reported and nothing depends on it. What settles that it is a reporting
+fault rather than a real one is that the driver goes on to work: bursts arrive,
+mTCP pings out and back, DNS resolves and an HTTP GET completes. **A status bit
+that disagrees with the data path is a bug in the bit, not in the path** — but
+it is printed as a raw byte alongside the verdict precisely so that the next
+person sees `81` rather than the word DOWN and does not spend an evening on the
+cable, the switch and the socket.
+
+One explanation was tested and is not it. The PHY reset used `delay_ms`, a
+calibrated spin loop, where the ASIX bring-up carries a comment about that exact
+trap -- it failed intermittently until it was switched to `delay_ticks`, which
+waits on the BIOS counter and is a guaranteed minimum. Switching the SR9700's
+PHY delays the same way changed nothing: still `81`. The change was kept anyway,
+because a guaranteed minimum is right regardless, but it is not the answer.
+
+Two more were tested and are not it either: all-multicast (`/M`) and
+promiscuous (`/P`) both still read `81`, which was the last difference in the
+receive filter -- `SRLINK` writes RCR `3B` and reads `C1`, while this driver
+writes `31`, `39` or `3B` and reads `81`. The bus-reset sequences have been read
+side by side and match.
+
+What is left is that `USBPKT` reads the register in a window `SRLINK` never
+occupies, or that one of the two bring-ups leaves the PHY somewhere subtly
+different. Neither has been shown, and neither is worth an evening while the
+data path underneath it is moving 5 MB at a time byte-exact.
 
 ### Three things this adapter taught the project
 

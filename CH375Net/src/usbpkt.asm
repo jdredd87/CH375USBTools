@@ -260,10 +260,33 @@ cfg_val:    db  1
 ; path is the vendor path with the parser removed, which is why adding it
 ; costs so little: rx_have skips rx_deliver, and psend skips the header.
 ;
-; ecm_mode is set by the bring-up in usbpktini.inc, from what the device's
-; own descriptors say.  Nothing here is chosen by the user or by USB ID.
-; --------------------------------------------------------------------------
-ecm_mode:   db  0
+; A THIRD layout now: the SR9700/DM9601 puts THREE bytes in front of each
+; frame -- a status byte and a 16-bit length -- and sends ONE frame per USB
+; transfer, exactly as ECM does.  So it is the ECM path with a header to
+; step over and a CRC to trim, and not the ASIX path at all.  That is worth
+; saying plainly because the layout READS like the ASIX one from a
+; distance, and building a tiling parser for it would be a week spent
+; solving a problem the device does not have.
+;
+; link_mode is set by the bring-up in usbpktini.inc.  ECM is chosen from
+; what the device's own descriptors say; the SR9700 has no class descriptor
+; to give it away, so that one -- alone here -- is chosen by USB ID.
+;
+; It is a VALUE and not a flag, and every test on it names the mode it
+; wants.  The two-way version tested `<> 0` and meant "ECM", which is the
+; sort of thing that keeps working right up until somebody adds a third.
+LM_AX       equ 0            ; AX88179 vendor layout: burst, entries, trailer
+LM_ECM      equ 1            ; CDC-ECM: one raw frame, no header at all
+LM_SR       equ 2            ; SR9700/DM9601: one frame behind 3 header bytes
+
+; The SR9700's framing, in one place because the receive parser and the
+; bring-up both need it and a number written twice is a number that will
+; disagree with itself.  RX: status, length low, length high -- and the
+; length COUNTS the four-byte Ethernet CRC.  TX: length low, high, and
+; that length counts only the frame.
+SR_RX_OVERHEAD equ 3
+SR_TX_OVERHEAD equ 2
+link_mode:   db  LM_AX
 
 ; The endpoint TOKENS, held as data rather than assembled into the
 ; instruction.  They used to be immediates -- (EP_BULK_IN << 4) | PID_IN --
@@ -293,10 +316,14 @@ link_st:    db  0xFF                 ; FF unknown, 0 down, 1 up
 n_notify:   dw  0
 
 ; Bytes of vendor header in front of a transmitted frame: 8 for the
-; AX88179, 0 for ECM.  A length rather than a flag because three separate
+; AX88179, 0 for ECM, 2 for the SR9700.  A length rather than a flag because three separate
 ; places need the number, and a flag tested three times is how the two
 ; halves of a decision drift apart.
 tx_hdrlen:  dw  8
+
+; Bytes from one SR9700 record to the next, held across the call into the
+; application's receiver, which is free to clobber every register.
+sr_stride:  dw  0
 
 ; Does this CPU have the 80186 string I/O instructions?  REP INSB and REP
 ; OUTSB move a byte between a port and memory in ONE instruction, where the
@@ -415,6 +442,19 @@ bi_flip:    db  0            ; already retried this read with the other PID
 n_toggle:   dw  0            ; reads recovered by flipping the toggle
 rx_pos:     dw  0            ; bytes of a part-read burst carried between
                              ; ticks -- see rx_go
+n_empty:    dw  0            ; SR9700 records with no frame in them
+junk_len:   dw  0            ; the last impossible length, and its context
+junk_at:    dw  0
+junk_burst: dw  0
+n_resync:   dw  0            ; bursts recovered by finding the boundary
+sr_carry:   dw  0            ; bytes of a record still owed from the
+                             ; last burst -- the phase across transfers
+junk_prev:  db  0            ; the previous burst's outcome, latched
+junk_prevleft: dw 0
+sr_end_why: db  0            ; how this burst's parse ended
+sr_prev_why: db 0            ; ...and how the one before it ended
+sr_end_left: dw 0
+sr_prev_left: dw 0
 n_flush:    dw  0            ; times we have had to go hunting
 
 ; Did the frames in a burst actually TILE it?  The layout puts the frames
@@ -460,6 +500,7 @@ rcv_tmp:    dd  0
 
 drv_name:   db  'AX88179/CH375', 0
 drv_ecm:    db  'CDC-ECM/CH375', 0
+drv_sr:     db  'SR9700/CH375', 0
 
 ; driver_info hands back a name, and PKTDRV and NETID both print it. It is
 ; the only place a user finds out WHICH of the two paths came up, so it has
@@ -1193,8 +1234,8 @@ rx_free:
         ; The ECM link notification, rarely -- it is an event, not data, and
         ; a transaction per tick for something that changes twice an hour
         ; would be pure cost inside a timer interrupt.
-        cmp     byte [ecm_mode], 0
-        je      short rx_nonote
+        cmp     byte [link_mode], LM_ECM
+        jne     short rx_nonote
         cmp     byte [ep_int_n], 0
         je      short rx_nonote
         dec     byte [int_ctr]
@@ -1292,8 +1333,11 @@ rx_have:
         cmp     byte [n_handles], 0
         je      short rx_done            ; drained, and nobody wants it
         mov     cx, bp
-        cmp     byte [ecm_mode], 0
+        mov     al, [link_mode]
+        cmp     al, LM_AX
         je      short rx_have_burst
+        cmp     al, LM_SR
+        je      short rx_have_sr
 
         ; CDC-ECM: what we just accumulated IS the frame.  The transfer
         ; ended because the device sent a short packet, and that short
@@ -1314,6 +1358,302 @@ rx_have:
 rx_have_burst:
         call    rx_deliver
 rx_done:
+        ret
+
+; --------------------------------------------------------------------------
+; SR9700/DM9601 receive: records laid end to end, each one
+;
+;   [status] [len low] [len high] [ ---- frame ---- ] [ FCS ]
+;
+; and the length counts the FCS, which the chip hands over rather than
+; stripping -- the same trap the ASIX path documents at length, and it
+; hides the same way: ARP reads fixed offsets and does not care, so the
+; link comes up and every ping times out.
+;
+; THIS LOOPS, AND THE FIRST VERSION DID NOT.  That version delivered the
+; first record and returned, on the finding that this chip sends one frame
+; per USB transfer exactly as CDC-ECM does.  The finding was real -- 5,054
+; frames went by without a single burst disagreeing with its own header --
+; and it was wrong.  At 26,000 frames the counter had caught 229 of them:
+; bursts of 268 bytes carrying a 64-byte record, with two hundred bytes of
+; perfectly good frames behind it that were being dropped on the floor.
+;
+; It tiles when the frames are SMALL, which is why a download of full-size
+; frames looked like proof of the opposite.  That is the whole argument for
+; counting an assumption instead of trusting it: the counter cost four
+; lines, it was written specifically because this was the thing most likely
+; to be wrong, and it is the only reason the fault was ever seen -- nothing
+; else reported anything. TCP retransmitted what was lost and the file
+; still arrived byte-exact, so the download that would have "verified" this
+; driver would have passed either way.
+;
+; The residue check at the end stays for the same reason the first counter
+; did: it is now the thing most likely to be wrong.
+; --------------------------------------------------------------------------
+rx_have_sr:
+        ; HOW DID THE LAST BURST END?  A burst that begins mid-record can
+        ; only have been preceded by one that ended mid-record, so these
+        ; two numbers have to agree -- and they do not: rejections at
+        ; offset 0 run at 4% while truncations sit at 1 in 4,000.  Exactly
+        ; one of those counters is wrong, and latching the previous
+        ; outcome is what says which, rather than a third hypothesis.
+        ;   0 clean   1 truncated   2 impossible length   3 residue left
+        mov     al, [cs:sr_end_why]
+        mov     [cs:sr_prev_why], al
+        mov     byte [cs:sr_end_why], 0
+        mov     ax, [cs:sr_end_left]
+        mov     [cs:sr_prev_left], ax
+        mov     word [cs:sr_end_left], 0
+
+        mov     bp, cx                   ; BP = bytes the burst delivered
+        xor     di, di                   ; DI = offset of this record
+
+        ; CARRY THE PHASE ACROSS BURSTS.  A USB transfer ends where the
+        ; chip's buffer happens to run dry, NOT on a record boundary, so
+        ; the records are a continuous stream and a burst routinely begins
+        ; part-way through one.  sr9700.pas has always modelled it that way
+        ; -- SrRecv counts bytes against the header's total and keeps
+        ; pulling packets until it has them all -- and this parser did not.
+        ;
+        ; Getting that wrong does not cost one frame, it costs a CASCADE:
+        ; the first header read in each burst is garbage, so the burst is
+        ; thrown away, and the next one is still out of phase.  The
+        ; attribution latch is what showed it -- "the burst before it ended
+        ; 2", impossible length, following impossible length -- and it is
+        ; also why the truncation counter sat at zero while 6% of bursts
+        ; were being rejected: the parse never got far enough to notice a
+        ; record was short, because it never found a valid header at all.
+        mov     ax, [cs:sr_carry]
+        or      ax, ax
+        je      short rx_sr_inphase
+        cmp     ax, bp
+        jb      short rx_sr_partway
+        ; the whole burst is the tail of a record we already gave up on
+        sub     ax, bp
+        mov     [cs:sr_carry], ax
+        ret
+rx_sr_partway:
+        mov     di, ax                   ; skip the continuation
+        mov     word [cs:sr_carry], 0
+rx_sr_inphase:
+rx_sr_next:
+        mov     ax, bp
+        sub     ax, di
+        ; The smallest thing a record can be is a header plus an empty one:
+        ; 3 + 4.  This used to demand 3 + 14 + 4, which meant a whole
+        ; 7-byte transfer exited here before its header was ever read --
+        ; so the empty-record branch below could never fire, and every one
+        ; of them was reported as unparsed residue instead.
+        cmp     ax, SR_RX_OVERHEAD + 4
+        jb      short rx_sr_end          ; too little left to be a record
+
+        mov     bx, di
+        add     bx, rxbuf
+        mov     ax, [bx + 1]             ; the length, FCS included
+
+        ; A LENGTH OF 4 IS NOT A FAULT, IT IS THE CHIP SAYING "NOTHING
+        ; HERE" -- the length counts the FCS, so 4 is a record with no
+        ; frame in it, and this part emits them routinely.  sr9700.pas has
+        ; said so all along; this parser was written with a floor of 18 and
+        ; counted every one of them as garbage.
+        ;
+        ; It showed up as 212 "impossible length" rejections in 4,347
+        ; bursts against exactly 1 genuine truncation, and as a stream of
+        ; SEVEN-byte bursts that the residue counter kept reporting -- 7
+        ; being a 3-byte header in front of a 4-byte empty record, which is
+        ; the whole transfer.  Reading those as a loss of synchronisation
+        ; sent the diagnosis at the wire; the wire was fine and the floor
+        ; was wrong.
+        cmp     ax, 4
+        jb      short rx_sr_junk
+
+        ; BOUND IT BEFORE DOING ARITHMETIC ON IT.  Without this an FFFF in
+        ; the header adds 3 to 0002 and sails through the "does it fit"
+        ; test below, because the test then compares 2 against the bytes
+        ; that arrived -- and rx_one is handed CX = FFFB and copies 64 KB
+        ; out of a 2 KB buffer into the application's frame buffer.
+        ;
+        ; Malformed headers really do arrive: one burst in 5,556 during a
+        ; 5 MB download read length 0 behind 1,453 bytes of real data, and
+        ; a header reading FFFF is the same event with different rubbish
+        ; in it.  A frame cannot exceed 1514 bytes plus its FCS.
+        cmp     ax, 1514 + 4
+        ja      short rx_sr_junk
+
+        mov     bx, ax
+        add     bx, SR_RX_OVERHEAD
+        mov     [cs:sr_stride], bx       ; where the next record starts
+        add     bx, di
+        cmp     bx, bp
+        jbe     short rx_sr_fits
+        jmp     rx_sr_bad                ; a trampoline: rx_sr_bad is now
+                                         ; more than 128 bytes below and an
+                                         ; 8086 conditional jump is short
+                                         ; only.  Same reason ecm_walk and
+                                         ; sr_walk each grew one.
+rx_sr_fits:                              ; the header claims more than
+                                         ; arrived: a truncated burst, and
+                                         ; delivering it would hand the
+                                         ; application stale bytes from an
+                                         ; earlier one -- rxbuf is never
+                                         ; cleared
+
+        ; Empty, or too short to be an Ethernet frame: step over it and
+        ; carry on.  Counted rather than ignored, because "the chip emits
+        ; these routinely" is a claim about the hardware and claims about
+        ; the hardware are what this driver keeps getting wrong.
+        cmp     ax, 4 + 14
+        jb      short rx_sr_empty
+
+        sub     ax, 4                    ; drop the FCS
+        mov     cx, ax
+        add     di, SR_RX_OVERHEAD       ; the frame, not the header
+        inc     word [n_frames]
+
+        ; DI AND BP ARE PUSHED BECAUSE rx_one CANNOT PROMISE TO GIVE THEM
+        ; BACK.  It ends in `call far [cs:rcv_tmp]` -- the application's own
+        ; receiver, somebody else's code, reached from inside a timer
+        ; interrupt.  The ASIX loop above learned this twice, the second
+        ; time when BP came back holding a C compiler's frame pointer.
+        push    bp
+        push    di
+        call    rx_one
+        pop     di
+        pop     bp
+
+        sub     di, SR_RX_OVERHEAD       ; back to the record
+        add     di, [cs:sr_stride]       ; on to the next
+        jmp     short rx_sr_next
+
+rx_sr_empty:
+        inc     word [cs:n_empty]
+        add     di, [cs:sr_stride]
+        jmp     short rx_sr_next
+
+rx_sr_end:
+        ; Anything left over is a record we could not read.
+        mov     ax, bp
+        sub     ax, di
+        mov     [cs:sr_end_left], ax
+        mov     byte [cs:sr_end_why], 3
+        or      ax, ax
+        jne     short rx_sr_resid
+        mov     byte [cs:sr_end_why], 0
+rx_sr_resid:
+        ; Zero left over is the expected answer, and the counter exists to
+        ; say so rather than to be believed.
+        cmp     di, bp
+        je      short rx_sr_done
+        inc     word [cs:n_tile]
+        mov     [cs:tile_di], di
+        mov     [cs:tile_lim], bp
+rx_sr_done:
+        ret
+; TWO WAYS TO FAIL, AND THEY MEAN OPPOSITE THINGS.  Lumping them into one
+; counter is what left 1,308 rejected bursts in 25,761 unexplained for a
+; whole campaign, and it was the second time in one session that the
+; instrument, not the driver, was the thing in the way.
+;
+;   rx_sr_junk  the header's length is impossible -- under 18 or over 1518.
+;               The read is landing somewhere that is not a record header,
+;               so this is a SYNCHRONISATION fault.
+;   rx_sr_bad   the header is plausible and the burst is shorter than it
+;               says.  The transfer ended part-way through a frame, so this
+;               is a REASSEMBLY fault, and the fix is to keep reading
+;               rather than to resynchronise.
+;
+; The Pascal driver reassembles across transfer boundaries for exactly that
+; reason -- sr9700.pas's SrRecv counts bytes against the header's total and
+; keeps pulling packets until it has them all.  If this counter is the one
+; that moves, that is the code to port.
+; RESYNCHRONISE INSTEAD OF THROWING THE BURST AWAY.
+;
+; Four mechanisms were proposed for these rejections and every one measured
+; at zero -- a drain leaving the pipe misaligned, the chip's empty-record
+; convention, a straddling record, and a lost phase carried across bursts.
+; They cascade (the attribution latch shows impossible-length following
+; impossible-length), so whatever starts one is rare and the cost is all in
+; the run that follows.
+;
+; So stop explaining the cause and recover from the effect.  The evidence is
+; specific and strong: the rejected burst that was captured held a VALID
+; record at offset 7 whose length ran to exactly the end of the burst --
+; 10 + 1518 = 1528.  A record boundary can therefore be found by search,
+; and the test is sharp: a length in range that lands exactly on the end of
+; the burst is not something random bytes produce often.
+;
+; Costs nothing when alignment is fine, because this runs only after a
+; header has already been rejected.
+rx_sr_junk:
+        mov     word [cs:sr_carry], 0
+        mov     byte [cs:sr_end_why], 2
+
+        ; Scan forward from the byte after the one that failed.
+        push    ax
+        mov     cx, di
+        inc     cx                       ; CX = candidate offset
+rx_sr_scan:
+        mov     ax, bp
+        sub     ax, cx
+        cmp     ax, SR_RX_OVERHEAD + 4
+        jb      short rx_sr_noscan       ; ran out of burst
+        mov     bx, cx
+        add     bx, rxbuf
+        mov     ax, [bx + 1]             ; candidate length
+        cmp     ax, 4
+        jb      short rx_sr_scannext
+        cmp     ax, 1514 + 4
+        ja      short rx_sr_scannext
+        mov     bx, ax
+        add     bx, SR_RX_OVERHEAD
+        add     bx, cx
+        cmp     bx, bp
+        jne     short rx_sr_scannext     ; must land exactly on the end
+        ; Found it.
+        mov     di, cx
+        pop     ax
+        inc     word [cs:n_resync]
+        jmp     rx_sr_next
+rx_sr_scannext:
+        inc     cx
+        jmp     short rx_sr_scan
+rx_sr_noscan:
+        pop     ax
+        ; LATCH WHAT WAS ACTUALLY THERE.  Two hypotheses for these have now
+        ; been proposed, implemented and measured at zero -- a drain leaving
+        ; the pipe misaligned, then the chip's empty-record convention --
+        ; and both were guesses dressed up as reasoning.  The length that
+        ; was rejected, where in the burst it was, and how big the burst
+        ; was are three numbers that settle it, and none of them was being
+        ; kept.
+        mov     [cs:junk_len], ax        ; the impossible length itself
+        mov     [cs:junk_at], di         ; where in the burst it was read
+        mov     [cs:junk_burst], bp      ; how much the burst delivered
+        mov     al, [cs:sr_prev_why]     ; and how the burst BEFORE it ended
+        mov     [cs:junk_prev], al
+        mov     ax, [cs:sr_prev_left]
+        mov     [cs:junk_prevleft], ax
+        mov     cx, bp
+        call    rx_keep
+        inc     word [n_junk]
+        ret
+; The header is plausible and the record runs past the end of the burst.
+; That is the normal case, not an error: the rest of it is in the next
+; transfer.  Remember how much is still owed so the next burst can step
+; over it and carry on IN PHASE.
+;
+; The straddling frame itself is still lost -- assembling it would need a
+; staging buffer and the frame is one of several thousand -- but every
+; record behind it in the next burst is recovered, and that is where the
+; cost was.
+rx_sr_bad:
+        mov     byte [cs:sr_end_why], 1
+        mov     ax, di
+        add     ax, [cs:sr_stride]
+        sub     ax, bp                   ; bytes of this record still to come
+        mov     [cs:sr_carry], ax
+        mov     [cs:sr_end_left], ax
+        inc     word [n_short]
         ret
 
 ; --------------------------------------------------------------------------
@@ -1962,7 +2302,10 @@ __ovr12:
         mov     di, txbuf
         mov     bx, cx
         add     bx, [cs:tx_hdrlen]       ; BX = what goes on the wire
-        cmp     byte [cs:ecm_mode], 0
+        mov     al, [cs:link_mode]
+        cmp     al, LM_AX
+        je      short psend_axhdr
+        cmp     al, LM_SR
         jne     short psend_body         ; ECM sends the frame and nothing
                                          ; else.  The zero-length packet at
                                          ; the end is still needed and is
@@ -1970,6 +2313,13 @@ __ovr12:
                                          ; is why the length is computed
                                          ; before the branch rather than
                                          ; inside each arm.
+        ; SR9700: two bytes, little-endian, and that is the whole header.
+        ; It does NOT count itself -- the chip is being told how long the
+        ; Ethernet frame is, which is why CX rather than BX goes in.
+        mov     ax, cx
+        stosw
+        jmp     short psend_body
+psend_axhdr:
         mov     ax, cx
         stosw                            ; length, low word
         xor     ax, ax
