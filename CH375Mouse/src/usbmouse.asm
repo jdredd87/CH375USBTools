@@ -114,6 +114,35 @@ old08:  dd      0
 io_dat: dw      0x260
 io_cmd: dw      0x261
 ep_in:  db      0                ; interrupt IN endpoint number
+
+; ---- the SERIAL mouse path ----
+;
+; A second kind of mouse entirely: not a USB mouse, but a SERIAL mouse on a
+; USB-to-serial adapter that is itself plugged into the CH375.  Everything
+; above the input layer is shared -- INT 33h, the cursor, the event
+; handlers, the PS/2 emulation -- because none of it cares where a report
+; came from.  apply_report takes three bytes (buttons, dx, dy) and that is
+; exactly what a serial packet decodes into.
+;
+; ser_mode is a VALUE and not a flag for the reason USBPKT's link_mode is:
+; a third source is likelier than a second was.
+SM_HID       equ 0                ; a USB HID mouse, straight into the CH375
+SM_MOUSESYS  equ 1                ; serial, 1200 8N1, five bytes, three buttons
+SM_MICROSOFT equ 2                ; serial, 1200 7N1, three bytes, two buttons
+
+ser_mode: db    SM_HID
+ser_out:  db    0                ; bulk OUT carrying data
+ser_ctl:  db    0                ; bulk OUT carrying the port control message
+ser_hdr:  db    0                ; status bytes at the head of every IN packet
+ser_ctog: db    0x80             ; toggle for the control endpoint
+ser_anyep: db   0                ; 1 = take endpoints whatever type they claim
+ser_n:    db    0                ; bytes of the packet being assembled
+ser_btn:  db    0                ; buttons held, decoded on the header byte
+ser_pkt:  times 8 db 0
+ser_vid:  dw    0
+ser_pid:  dw    0
+ser_reps: dw    0                ; serial packets decoded, for /S
+ser_lost: dw    0                ; bytes dropped hunting for a header
 ep_tog: db      0x80             ; SET_ENDP6 argument: bit 6 is the toggle
 hid_if: db      0                ; bInterfaceNumber of the HID interface
 cfg_val:db      1
@@ -443,6 +472,11 @@ poll_got:
         call    ch_read
         mov     [rep_len], cl
         xor     byte [ep_tog], 0x40      ; DATA0 <-> DATA1
+        cmp     byte [ser_mode], SM_HID
+        je      short poll_hid
+        call    ser_bytes                ; a serial packet, not a HID report
+        jmp     short poll_done
+poll_hid:
         cmp     cl, 3
         jb      short poll_done
         ; Button bookkeeping for /S lives here rather than in apply_report,
@@ -490,6 +524,112 @@ poll_hotplug:
 ;   buf+0  bit0 left, bit1 right, bit2 middle
 ;   buf+1  signed X, right positive
 ;   buf+2  signed Y, DOWN positive (USB) -- INT 33h wants Y down too
+; --------------------------------------------------------------------------
+; Feed CL bytes at rep_buf into the serial packet decoder, and call
+; apply_report for every complete one.
+;
+; Mouse Systems: five bytes, 1000 0LMR then dx, dy, dx, dy.
+;
+;   * The buttons are ACTIVE LOW -- a 0 bit means pressed -- which is the
+;     single easiest thing here to get backwards, and getting it backwards
+;     gives a mouse that reports three buttons held down forever.
+;   * There are TWO movement pairs per packet and they are not duplicates;
+;     the mouse sampled twice between sends.  Taking only the first halves
+;     the reported speed and reads as a sluggish mouse rather than a bug.
+;   * Y counts UP and a screen counts DOWN, so it is negated.
+;
+; It RESYNCHRONISES ON THE HEADER rather than counting blindly, because a
+; byte will be lost eventually on a line nobody is flow-controlling, and a
+; counting decoder that loses one is permanently one byte out -- which does
+; not look like a lost byte, it looks like a mouse that jumps.
+; --------------------------------------------------------------------------
+ser_bytes:
+        mov     ch, 0
+        or      cl, cl
+        je      short sb_ret
+        mov     si, rep_buf
+        ; Some adapters put status bytes at the head of every IN packet --
+        ; one on the Keyspan, two on FTDI.  They are not data and feeding
+        ; them to the decoder would desynchronise it on every single packet.
+        mov     al, [ser_hdr]
+        or      al, al
+        je      short sb_loop
+        cmp     cl, al
+        jbe     short sb_ret
+        mov     ah, 0
+        add     si, ax
+        sub     cl, al
+sb_loop:
+        lodsb
+        call    ser_feed
+        dec     cl
+        jne     short sb_loop
+sb_ret:
+        ret
+
+ser_feed:
+        push    cx
+        push    si
+        cmp     byte [ser_n], 0
+        jne     short sf_body
+        ; Header: 1000 0LMR.  Anything else is a byte we are not in step
+        ; with, and dropping it is how the decoder finds its feet again.
+        mov     ah, al
+        and     ah, 0xF8
+        cmp     ah, 0x80
+        je      short sf_hdr
+        inc     word [ser_lost]
+        jmp     short sf_out
+sf_hdr:
+        xor     ah, ah
+        test    al, 0x04
+        jne     short sf_noleft
+        or      ah, 1
+sf_noleft:
+        test    al, 0x01
+        jne     short sf_noright
+        or      ah, 2
+sf_noright:
+        test    al, 0x02
+        jne     short sf_nomid
+        or      ah, 4
+sf_nomid:
+        mov     [ser_btn], ah
+sf_body:
+        mov     bl, [ser_n]
+        mov     bh, 0
+        mov     [bx + ser_pkt], al
+        inc     byte [ser_n]
+        cmp     byte [ser_n], 5
+        jb      short sf_out
+        mov     byte [ser_n], 0
+        inc     word [ser_reps]
+
+        ; Build the three bytes apply_report already understands.  That is
+        ; the whole reason this driver needed a decoder and not a rewrite:
+        ; everything above the input layer is shared with the USB path.
+        mov     al, [ser_btn]
+        mov     [rep_buf], al
+        mov     al, [ser_pkt+1]
+        add     al, [ser_pkt+3]
+        mov     [rep_buf+1], al
+        mov     al, [ser_pkt+2]
+        add     al, [ser_pkt+4]
+        neg     al                       ; the protocol counts up, screens down
+        mov     [rep_buf+2], al
+
+        mov     al, [rep_buf]
+        and     al, 7
+        je      short sf_nobtn
+        or      [btn_seen], al
+        inc     word [btn_reps]
+sf_nobtn:
+        call    apply_report
+sf_out:
+        pop     si
+        pop     cx
+        ret
+
 ; --------------------------------------------------------------------------
 apply_report:
         inc     word [rep_count]
@@ -1727,14 +1867,39 @@ unload_nops2:
 ; CH375 BRING-UP.  Returns CF clear with ep_in / cfg_val / hid_if filled in.
 ; ==========================================================================
 
-ch375_bringup:
-        ; --- is a chip there? ---
+; CHECK_EXIST once.  ZF set if the chip answered.  It replies with the
+; ones-complement of what it was sent, so 55h -> AAh; an empty slot floats
+; to FFh or 00h and fails.
+chip_ask:
         mov     al, CMD_CHECK_EXIST
         call    ch_cmd
         mov     al, 0x55
         call    ch_wr
         call    ch_rd
         cmp     al, 0xAA
+        ret
+
+ch375_bringup:
+        ; --- is a chip there? ---
+        ;
+        ; RESET AND ASK AGAIN BEFORE DECIDING THERE IS NO CARD.  A chip left
+        ; mid-transaction by an earlier program fails CHECK_EXIST on a card
+        ; that is fitted and working, and "No CH375 responds at that I/O
+        ; address" then sends the reader to the jumpers and the slot.
+        ;
+        ; It is reachable from this driver's own unload: /U restores the
+        ; vectors and the timer but does not quiesce a transfer, so the very
+        ; next load can meet a chip that is still thinking about the last
+        ; one.  SERPROBE has recovered this way all along; this did not, and
+        ; a load-unload-load cycle is exactly what testing a driver is made
+        ; of.
+        call    chip_ask
+        je      short bu_chip
+        mov     al, CMD_RESET_ALL
+        call    ch_cmd
+        mov     cx, 200
+        call    delay_ms
+        call    chip_ask
         je      short bu_chip
         mov     dx, msg_nochip
         jmp     near die
@@ -1902,9 +2067,12 @@ bu_dd_got:
         call    ch_wr
         mov     cx, 0xFFFF
         call    ch_wait
-        jc      short bu_fail
+        jnc     short bu_addr_ok
+bu_fail_t:                                   ; trampoline: the serial branch
+        jmp     bu_fail                      ; below pushed bu_fail out of
+bu_addr_ok:                                  ; short reach
         cmp     al, INT_SUCCESS
-        jne     short bu_fail
+        jne     short bu_fail_t
         mov     al, CMD_SET_USB_ADDR
         call    ch_cmd
         mov     al, USB_ADDR
@@ -1942,6 +2110,19 @@ bu_dd_got:
         jne     short bu_fail
         mov     cx, 50
         call    delay_ms
+
+        ; A serial adapter needs its port opening; a HID mouse needs the
+        ; boot-protocol requests below and would not understand this.
+        cmp     byte [ser_mode], SM_HID
+        je      short bu_nothid
+        call    ser_open
+        jc      short bu_fail
+        mov     cx, 50
+        call    delay_ms
+        mov     byte [ep_tog], 0x80
+        clc
+        ret
+bu_nothid:
 
         mov     byte [ep_tog], 0x80
         mov     al, 0x0B                 ; SET_PROTOCOL, wValue 0 = boot
@@ -2104,10 +2285,316 @@ pc_next:
         jmp     near pc_loop
 pc_done:
         cmp     byte [got_ep], 0
-        je      short pc_fail
+        je      short pc_serial
+        clc
+        ret
+
+; No HID interface with an interrupt IN.  Before giving up, ask whether this
+; is a USB-to-serial adapter with a serial mouse behind it.
+pc_serial:
+        call    ser_detect
+        jc      short pc_fail
         clc
         ret
 pc_fail:
+        stc
+        ret
+
+; --------------------------------------------------------------------------
+; Send CL bytes at SI to a bulk OUT endpoint AL, with its own toggle.
+; --------------------------------------------------------------------------
+bulk_out_ser:
+        push    cx
+        push    ax
+        mov     al, CMD_WR_USB_DATA7
+        call    ch_cmd
+        mov     al, cl
+        call    ch_wr
+        mov     ch, 0
+bo_byte:
+        lodsb
+        call    ch_wr
+        loop    bo_byte
+        mov     al, CMD_SET_ENDP7
+        call    ch_cmd
+        mov     al, [ser_ctog]
+        call    ch_wr
+        mov     al, CMD_ISSUE_TOKEN
+        call    ch_cmd
+        pop     ax
+        push    ax
+        mov     cl, 4
+        shl     al, cl
+        or      al, PID_OUT
+        call    ch_wr
+        mov     cx, 0xFFFF
+        call    ch_wait
+        ; TEST THE STATUS BEFORE RESTORING ANYTHING.  The first version
+        ; popped AX first and then compared AL against INT_SUCCESS -- so it
+        ; was testing the ENDPOINT NUMBER, which is never 14h, and reporting
+        ; that number as the CH375 status.  "Last CH375 status: 02" is not a
+        ; USB status at all; it is endpoint 2 wearing the costume, and it
+        ; sent the diagnosis at the device for two rounds.
+        mov     [last_st], al
+        jc      short bos_bad
+        cmp     al, INT_SUCCESS
+        jne     short bos_bad
+        pop     ax
+        pop     cx
+        xor     byte [ser_ctog], 0x40        ; DATA0 <-> DATA1
+        clc
+        ret
+bos_bad:
+        pop     ax
+        pop     cx
+        stc
+        ret
+
+; --------------------------------------------------------------------------
+; Open the serial port at the mouse's framing and RAISE RTS AND DTR.
+;
+; THE CONTROL LINES ARE THE POWER SUPPLY.  A serial mouse draws its power
+; from RTS and DTR, so an adapter left with them low gives a mouse that is
+; not broken, not misconfigured, and completely silent -- which reads as a
+; wrong baud rate, a bad cable or an unsupported adapter, in that order, for
+; as long as it takes somebody to measure the pins.
+;
+; The Keyspan takes a flat 34-byte block on its own bulk OUT endpoint rather
+; than a USB control transfer.  It is "set this flag, then this value" for
+; every field, so a block of zeros changes nothing and only the fields
+; written below do anything.  The layout is CH375Serial's, reconstructed
+; from the Linux keyspan driver and proven there against a modem.
+; --------------------------------------------------------------------------
+KS_SETCLOCK   equ 0
+KS_BAUDLO     equ 1
+KS_BAUDHI     equ 2
+KS_SETLCR     equ 3
+KS_LCR        equ 4
+KS_SETRXMODE  equ 5
+KS_SETTXMODE  equ 7
+KS_SETTXFLOW  equ 9
+KS_SETRXFLOW  equ 11
+KS_SETRTS     equ 19
+KS_RTS        equ 20
+KS_SETDTR     equ 21
+KS_DTR        equ 22
+KS_RXFWDLEN   equ 23
+KS_RXFWDTMO   equ 24
+KS_TXACK      equ 25
+KS_PORTEN     equ 26
+KS_RXFLUSH    equ 30
+KS_RETSTATUS  equ 33
+KS_LEN        equ 34
+
+ser_open:
+        cmp     byte [ser_vid], 0xCD         ; low byte of 06CD
+        jne     short so_gen_t
+        cmp     byte [ser_vid+1], 0x06
+        je      short so_keyspan
+so_gen_t:
+        jmp     so_generic
+so_keyspan:
+
+        push    cs
+        pop     es
+        mov     di, ser_msg
+        mov     cx, KS_LEN
+        xor     al, al
+        cld
+        rep     stosb                        ; zeros change nothing
+
+        mov     byte [ser_msg + KS_SETCLOCK], 1
+        ; 14,769,231 / (1200 * 16) = 769, which is 0301h.  A mouse is 1200
+        ; baud and nothing else; there is no other rate to support.
+        mov     byte [ser_msg + KS_BAUDLO], 0x01
+        mov     byte [ser_msg + KS_BAUDHI], 0x03
+        mov     byte [ser_msg + KS_SETLCR], 1
+        ; The 16550 LCR: data bits in 0-1 as (bits - 5), so 8 bits is 3.
+        ; Mouse Systems is 8N1.  Getting this wrong does not silence the
+        ; mouse -- it strips bit 7 and delivers a stream that looks like no
+        ; protocol on earth, which is far more expensive than silence.
+        mov     byte [ser_msg + KS_LCR], 0x03
+        mov     byte [ser_msg + KS_SETRXMODE], 1
+        mov     byte [ser_msg + KS_SETTXMODE], 1
+        mov     byte [ser_msg + KS_SETTXFLOW], 1
+        mov     byte [ser_msg + KS_SETRXFLOW], 1
+        mov     byte [ser_msg + KS_SETRTS], 1
+        mov     byte [ser_msg + KS_RTS], 1
+        mov     byte [ser_msg + KS_SETDTR], 1
+        mov     byte [ser_msg + KS_DTR], 1
+        ; ONE character per USB packet.  A mouse report is five bytes and
+        ; must not wait in the adapter for a sixth: the obvious setting here
+        ; is eight, which is right for a terminal and, at 1200 baud, leaves
+        ; a stationary mouse's last report stranded for tens of
+        ; milliseconds.  Latency is the whole quality bar for a pointer.
+        mov     byte [ser_msg + KS_RXFWDLEN], 1
+        mov     byte [ser_msg + KS_RXFWDTMO], 16
+        mov     byte [ser_msg + KS_TXACK], 1
+        mov     byte [ser_msg + KS_PORTEN], 1
+        mov     byte [ser_msg + KS_RXFLUSH], 1
+        mov     byte [ser_msg + KS_RETSTATUS], 1
+
+        push    cs
+        pop     ds
+        mov     si, ser_msg
+        mov     cl, KS_LEN
+        mov     al, [ser_ctl]
+        call    bulk_out_ser
+        ret
+so_generic:
+        ; Recognised but not opened.  Saying so beats pretending: an adapter
+        ; whose port was never enabled delivers nothing, and "no bytes" is
+        ; the one symptom this driver cannot tell apart from a dead mouse.
+        stc
+        ret
+
+; --------------------------------------------------------------------------
+; Is this a USB-to-serial adapter we know how to open?
+;
+; Chosen by USB ID, because these parts have nothing else to go on: the
+; interface class is vendor-specific and the strings are not to be trusted.
+; That is the same decision USBPKT had to make for the SR9700 and it is
+; equally unavoidable here.
+;
+; The endpoint walk takes the first bulk pair on an interface that is NOT
+; mass storage.  Skipping class 08 matters: adapters and network parts alike
+; put a driver-CD flash first, with its own bulk pair, and binding to it
+; gives a driver that works perfectly and never sees a byte.
+; --------------------------------------------------------------------------
+ser_detect:
+        mov     ax, [desc_buf + 8]
+        mov     [ser_vid], ax
+        mov     ax, [desc_buf + 10]
+        mov     [ser_pid], ax
+
+        mov     ax, [ser_vid]
+        cmp     ax, 0x06CD                   ; Keyspan / InnoSys
+        je      short sd_keyspan
+        cmp     ax, 0x0403                   ; FTDI
+        je      short sd_generic
+        cmp     ax, 0x10C4                   ; Silicon Labs CP210x
+        je      short sd_generic
+        cmp     ax, 0x067B                   ; Prolific
+        je      short sd_generic
+        cmp     ax, 0x1A86                   ; WCH CH340/CH341
+        je      short sd_generic
+        stc
+        ret
+
+sd_keyspan:
+        ; THE KEYSPAN DECLARES TWO CONFIGURATIONS AND ONLY THE SECOND IS
+        ; USABLE.  Its first puts INTERRUPT endpoints where the data should
+        ; be; the second declares the same endpoint NUMBERS as bulk.  The
+        ; CH375's GET_DESCR shortcut can only fetch configuration index 0,
+        ; so the numbers come from that descriptor and the VALUE selected is
+        ; the other one -- which works because the addresses agree and only
+        ; the types differ.  SERPROBE prints both if this ever stops being
+        ; true of a later part.
+        mov     byte [cfg_val], 2
+        mov     byte [ser_hdr], 1            ; one status byte per IN packet
+        ; AND THAT IS WHY THE TYPE FILTER HAS TO GO.  The descriptor being
+        ; walked is configuration index 0, where this part declares these
+        ; endpoints as INTERRUPT; they are bulk only in configuration 2,
+        ; which is the one being selected and the one the CH375's GET_DESCR
+        ; shortcut cannot fetch.  Insisting on bulk here finds nothing at
+        ; all and fails the whole parse -- which is exactly what it did,
+        ; three lines under a comment explaining that the types differ.
+        ;
+        ; The endpoint NUMBERS agree between the two configurations, which
+        ; is what makes this safe, and the CH375 issues a token the same way
+        ; for either type in any case.
+        mov     byte [ser_anyep], 1
+        jmp     short sd_walk
+sd_generic:
+        mov     byte [ser_hdr], 0
+        mov     byte [ser_anyep], 0
+sd_walk:
+        ; Walk again, this time for bulk endpoints outside mass storage.
+        mov     ch, 0
+        mov     cl, [cfg_len]
+        xor     bx, bx
+        mov     byte [in_hid], 0             ; reused: 1 = inside class 08
+        mov     byte [got_ep], 0
+        mov     byte [ser_out], 0
+        mov     byte [ser_ctl], 0
+sw_loop:
+        mov     ax, bx
+        add     ax, 2
+        cmp     ax, cx
+        jbe     short sw_in_range
+sw_fin:                                      ; a trampoline: sw_done is more
+        jmp     sw_done                      ; than 128 bytes below and an
+sw_in_range:                                 ; 8086 conditional jump is short
+        mov     di, cfg_buf                  ; only.  ecm_walk and sr_walk in
+        add     di, bx                       ; CH375Net each needed the same.
+        mov     al, [di]                     ; bLength
+        cmp     al, 2
+        jb      short sw_fin
+        mov     ah, [di+1]                   ; bDescriptorType
+        cmp     ah, 4
+        jne     short sw_notif
+        mov     ah, [di+5]                   ; bInterfaceClass
+        cmp     ah, 0x08                     ; mass storage: the driver CD
+        jne     short sw_ifok
+        mov     byte [in_hid], 1
+        jmp     short sw_next
+sw_ifok:
+        mov     byte [in_hid], 0
+        jmp     short sw_next
+sw_notif:
+        cmp     ah, 5                        ; ENDPOINT
+        jne     short sw_next
+        cmp     byte [in_hid], 0
+        jne     short sw_next                ; belongs to the flash
+        cmp     byte [ser_anyep], 0
+        jne     short sw_typeok
+        mov     al, [di+3]
+        and     al, 3
+        cmp     al, 2                        ; bulk
+        jne     short sw_next
+sw_typeok:
+        mov     ah, [di+2]                   ; bEndpointAddress
+        test    ah, 0x80
+        jne     short sw_epin
+        and     ah, 0x0F
+        cmp     byte [ser_out], 0
+        jne     short sw_ep2
+        mov     [ser_out], ah                ; first bulk OUT: data
+        jmp     short sw_next
+sw_ep2:
+        cmp     byte [ser_ctl], 0
+        jne     short sw_next
+        mov     [ser_ctl], ah                ; second bulk OUT: control
+        jmp     short sw_next
+sw_epin:
+        cmp     byte [got_ep], 0
+        jne     short sw_next
+        and     ah, 0x0F
+        mov     [ep_in], ah
+        mov     byte [got_ep], 1
+sw_next:
+        mov     di, cfg_buf
+        add     di, bx
+        mov     al, [di]
+        mov     ah, 0
+        add     bx, ax
+        jmp     sw_loop
+sw_done:
+        cmp     byte [got_ep], 0
+        je      short sw_no
+        cmp     byte [ser_out], 0
+        je      short sw_no
+        ; A part with only one bulk OUT carries its control on endpoint 0
+        ; instead; the Keyspan is the one here that needs a second.
+        mov     al, [ser_out]
+        cmp     byte [ser_ctl], 0
+        jne     short sw_ok
+        mov     [ser_ctl], al
+sw_ok:
+        mov     byte [ser_mode], SM_MOUSESYS
+        clc
+        ret
+sw_no:
         stc
         ret
 
@@ -2334,6 +2821,13 @@ report_found:
         mov     dx, msg_lowspd
         call    puts
 report_fs:
+        ; Say which KIND of mouse this is.  The line used to read "USB mouse
+        ; on CH375 ... HID interface 0" whatever was attached, which on the
+        ; serial path is wrong twice over -- it is not a USB mouse and there
+        ; is no HID interface -- and the one line a user reads to confirm
+        ; the right driver came up should not be describing a different one.
+        cmp     byte [ser_mode], SM_HID
+        jne     short report_ser
         mov     dx, msg_found
         call    puts
         mov     al, [ep_in]
@@ -2342,6 +2836,17 @@ report_fs:
         call    puts
         mov     al, [hid_if]
         call    putdec
+        jmp     short report_ids
+report_ser:
+        mov     dx, msg_found_s
+        call    puts
+        mov     al, [ep_in]
+        call    putdec
+        mov     dx, msg_serout
+        call    puts
+        mov     al, [ser_ctl]
+        call    putdec
+report_ids:
         mov     dx, msg_vidpid
         call    puts
         mov     al, [desc_buf+9]
@@ -2593,6 +3098,8 @@ msg_t_r1c:     db '  after speed, reg 1C: $'
 msg_t_descr:   db '  GET_DESCR device   : $'
 msg_lowspd:    db 'Low-speed device; USB bus set to 1.5 Mbps.', 13, 10, '$'
 msg_found:     db 'USB mouse on CH375: endpoint $'
+msg_found_s:   db 'Serial mouse on a USB adapter: bulk IN $'
+msg_serout:    db ', control OUT $'
 msg_iface:     db ', HID interface $'
 msg_vidpid:    db ', VID/PID $'
 msg_already:   db 'USBMOUSE is already loaded.  /U unloads it.', 13, 10, '$'
@@ -2625,6 +3132,7 @@ msg_laststat:  db 'Last CH375 status: $'
 ; Scratch used only by INIT, so it costs no resident memory.
 desc_buf:   times 64 db 0
 cfg_buf:    times 96 db 0
+ser_msg:    times 40 db 0
 
 ; The help text lives past the resident end, so however long it gets it costs
 ; nothing but disk.

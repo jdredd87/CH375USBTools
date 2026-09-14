@@ -20,8 +20,37 @@ same CH375 card.
 
 | | |
 |---|---|
-| `USBMOUSE.COM` | USB HID mouse. Resident INT 33h driver. **Working** |
+| `USBMOUSE.COM` | **both.** It works out which is attached and installs INT 33h either way. **Working** |
 | `MOUPROBE.EXE` | serial mouse on a USB-to-serial adapter: find it, identify its protocol, prove it moves. **Working** |
+
+One driver, two input sources. `USBMOUSE.COM` enumerates whatever is on the
+CH375; if it finds no HID interface it asks whether the device is a
+USB-to-serial adapter, and if it is, opens the port at 1200 8N1 with RTS and
+DTR raised and decodes Mouse Systems packets instead of HID reports.
+Everything above the input layer — INT 33h, the cursor, the event handlers,
+the PS/2 emulation for Windows 3.x — is shared, because none of it cares
+where a report came from. `apply_report` takes three bytes (buttons, dx, dy)
+and a serial packet decodes into exactly those.
+
+```
+USBMOUSE 1.1.0 -- StevenC
+Serial mouse on a USB adapter: bulk IN 1, control OUT 2, VID/PID 06CD/0121
+USBMOUSE 1.1.0 resident.  INT 33h installed.
+```
+
+`MOUSETST` against it, with the mouse being moved and clicked:
+
+```
+  reports delivered by the mouse: 130
+  live position 0,95 buttons 6
+34/34 checks passed.
+```
+
+The default `/R=8` gives a 145 Hz poll, which is what makes a serial mouse
+feel like a mouse: latency, not bandwidth, is the quality bar here. 1200
+baud and five bytes a report is 120 bytes/second against a chip that
+sustains about 19,000 — the only project in this collection where the
+CH375's packet rate cannot be the limit.
 
 **Nothing in the serial half is tied to one adapter.** `src/dmouse.pas` knows
 the two serial mouse protocols and nothing else — it never sees a USB device.
