@@ -356,6 +356,66 @@ monitor sums the guns and two different colours land on the same grey.
 swapped. Getting that wrong gives you a BBS that is readable but wrong, which
 is the hardest kind of bug to notice.
 
+### Two bugs the screen found that no counter would have
+
+**The status line was being scrolled away.** It lives on the last row, but the
+terminal was using all 25 rows for text — so the moment output reached the
+bottom, `NewLine` put the cursor on the status row, `ScrollUp` dragged the
+status line up into the conversation, and a clear-screen wiped it. Because the
+status line is redrawn once a tick it flickered back rather than simply
+vanishing, which made it look like a drawing fault instead of a geometry one.
+The text area is now `ROWS - 1` and every clear, scroll and cursor clamp agrees
+where the text ends.
+
+**Scrolling was slow enough to drop serial data.** `ScrollUp` was a Pascal loop
+over `MemW[]`, and every `MemW[]` access reloads a far pointer — `BENCH`
+measures about 58,640 a second on this machine. A scroll is 1920 reads plus
+1920 writes, so roughly **65 ms during which the program is not reading the USB
+port at all**. At 9600 baud that is sixty-odd characters, more than a whole
+packet, and the lost bytes included line feeds — so the symptom was lines
+overwriting each other rather than obviously missing text, which is far harder
+to read as data loss:
+
+```
+ 5|xternalics Courier V.Everything Configuration Profile...
+ 7|Options       HST,V32bis,Terbo,V3lock Freq       25 MHz
+```
+
+`REP MOVSW` beats per-element `MemW[]` by about 7.4x, measured — the same
+lesson that doubled the bouncing-ball frame rate in the graphics work, arriving
+here from a completely different direction. **A terminal is a real-time program
+even though nothing about it looks like one:** time spent painting is time not
+spent draining a buffer that keeps filling.
+
+The batch size was the other half. `SerBatchFor` originally aimed for ~110
+packets/s against a measured ceiling of 131–138, which left no headroom for any
+moment the host spent not reading. It now aims for about **30 packets/s** —
+`baud/300`, giving 32 characters a packet at 9600, which is exactly what
+`SERTALK` used when its output was clean.
+
+### Testing a program the bridge cannot see
+
+`/V` prints the finished screen back through DOS. A terminal draws into video
+memory, which the bridge cannot capture, so the only way to check it was to
+photograph the screen and guess when to press the shutter — three attempts in a
+row caught the wrong moment and said nothing about the program. Dumping the
+text plane at exit is deterministic and needs no camera:
+
+```
+ 3|USRobotics Courier V.Everything Configuration Profile...
+ 5|Product type           US/Canada External
+ 6|Product ID             00345303
+status| Keyspan (InnoSys)  9600 8N1   rx 2176  tx 20   ALT-X quit  ALT-H hangup|
+```
+
+Its own first version set video mode 3 before reading — which *clears the
+screen* — and faithfully reported 25 blank rows after a session that had
+received 2087 bytes. The mode reset now happens after the bytes are read.
+
+`/R=n` repeats the opening command, which exists purely to force a scroll: a
+single `ATI7` is sixteen lines and never reaches the bottom of a 24-row window,
+so it could never have shown the status line being overwritten.
+
 `/S=secs` exists so the thing can be tested at all: a terminal quits on a
 keystroke and the bridge has no keyboard, so without it an unattended run
 blocks until somebody walks to the machine.

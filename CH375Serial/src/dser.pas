@@ -345,10 +345,21 @@ end;
 function SerBatchFor(Baud: LongInt): Byte;
 var N: LongInt;
 begin
-  { bytes/s is baud/10; aim for about 110 packets/s, which is inside what
-    this chip sustains. }
-  N := Baud div 1000;
-  if N < 4 then N := 4;
+  { Aim for roughly 30 packets a second, NOT the 110 this first tried.
+
+    The measured ceiling is 131-138 packets/s, and aiming just under it
+    left no headroom at all: any moment the host spends not reading -- a
+    screen scroll, a repaint, a disk access -- overruns the adapter and
+    characters are lost. In a terminal the lost bytes include line feeds,
+    so the symptom is lines overwriting one another rather than obviously
+    missing text, which is much harder to read as data loss.
+
+    baud/300 gives 32 characters a packet at 9600, which is exactly what
+    SERTALK used when its output was clean, and it holds the packet rate
+    near 30/s across the range. The cap is 48 because a 64-byte packet has
+    to carry the per-packet header too. }
+  N := Baud div 300;
+  if N < 8 then N := 8;
   if N > 48 then N := 48;
   SerBatchFor := Byte(N);
 end;

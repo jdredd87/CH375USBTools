@@ -95,8 +95,28 @@ var
   DialNum : ShortString;
   InitCmd : ShortString;
   RunSecs : Integer;
+  Repeats : Integer;
+  DumpScr : Boolean;
+  DR, DC  : Integer;
+  DB      : Byte;
+  DLine   : ShortString;
+  Rep     : Integer;
+  KickBuf : array[0..95] of Byte;
+  KickGot : Byte;
+  KickT0, KickEl : LongInt;
 
   { screen }
+  { TRows is the height of the TERMINAL AREA, which is not the height of
+    the screen when a status line is showing.
+
+    This was the whole of a real bug: the status line lives on the last
+    row, and the terminal used all 25 rows for text. So the moment output
+    reached the bottom, NewLine put the cursor on the status row, ScrollUp
+    dragged the status line up into the text, and a clear-screen wiped it.
+    The status line was being redrawn once a tick, so it flickered back and
+    forth rather than simply vanishing, which made it look like a drawing
+    fault rather than a geometry one. }
+  TRows   : Integer;
   VSeg    : Word;
   Mono    : Boolean;
   CurX, CurY : Integer;
@@ -206,29 +226,62 @@ begin
   end;
 end;
 
+{ Scroll the text area up one line, with REP MOVSW.
+
+  This was a Pascal loop over MemW[] and it was dropping serial data.
+  Every MemW[] access reloads a far pointer -- BENCH measures about 58,640
+  of them a second on this machine -- and a scroll is 1920 reads plus 1920
+  writes, so roughly 65 ms during which the program is not reading the USB
+  port at all. At 9600 baud that is over sixty characters, more than a
+  whole packet, and the symptom was lines overwriting each other because
+  the lost bytes included the line feeds.
+
+  REP MOVSW beats per-element MemW[] by about 7.4x, measured -- it is the
+  same lesson that doubled the bouncing-ball frame rate in the graphics
+  work, arriving here from a completely different direction. A terminal is
+  a real-time program even though nothing about it looks like one: time
+  spent painting is time not spent draining a buffer that keeps filling.
+
+  CX and the fill word are loaded BEFORE DS is changed, because Pascal
+  globals live in DS and reading them afterwards would read video memory
+  instead. }
 procedure ScrollUp;
 var
-  Src, Dst: Word;
-  K: Word;
+  Cnt, Fill: Word;
 begin
-  for K := 0 to (COLS * (ROWS - 1)) - 1 do
-  begin
-    Dst := K * 2;
-    Src := Dst + COLS * 2;
-    MemW[VSeg : Dst] := MemW[VSeg : Src];
+  Cnt := Word(TRows - 1) * COLS;
+  Fill := (Word(Attr) shl 8) or 32;
+  asm
+    push ds
+    push es
+    push si
+    push di
+    mov cx, Cnt
+    mov bx, Fill
+    mov ax, VSeg
+    mov es, ax
+    mov ds, ax
+    mov si, COLS * 2
+    xor di, di
+    cld
+    rep movsw
+    mov cx, COLS
+    mov ax, bx
+    rep stosw
+    pop di
+    pop si
+    pop es
+    pop ds
   end;
-  for K := 0 to COLS - 1 do
-    MemW[VSeg : (COLS * (ROWS - 1) + K) * 2] :=
-      (Word(Attr) shl 8) or 32;
 end;
 
 procedure NewLine;
 begin
   CurX := 0;
   Inc(CurY);
-  if CurY >= ROWS then
+  if CurY >= TRows then
   begin
-    CurY := ROWS - 1;
+    CurY := TRows - 1;
     ScrollUp;
   end;
 end;
@@ -240,11 +293,27 @@ begin
   if CurX >= COLS then NewLine;
 end;
 
+{ Same reasoning as ScrollUp: one string instruction rather than 2000
+  far-pointer reloads. }
 procedure ClearScreen;
-var K: Word;
+var
+  Cnt, Fill: Word;
 begin
-  for K := 0 to COLS * ROWS - 1 do
-    MemW[VSeg : K * 2] := (Word(Attr) shl 8) or 32;
+  Cnt := Word(TRows) * COLS;
+  Fill := (Word(Attr) shl 8) or 32;
+  asm
+    push es
+    push di
+    mov cx, Cnt
+    mov ax, Fill
+    mov dx, VSeg
+    mov es, dx
+    xor di, di
+    cld
+    rep stosw
+    pop di
+    pop es
+  end;
   CurX := 0; CurY := 0;
 end;
 
@@ -266,9 +335,9 @@ var A, B, K: Integer;
 begin
   case Mode of
     1: begin A := 0; B := CurY * COLS + CurX; end;
-    2: begin A := 0; B := COLS * ROWS - 1; end;
+    2: begin A := 0; B := COLS * TRows - 1; end;
   else
-    begin A := CurY * COLS + CurX; B := COLS * ROWS - 1; end;
+    begin A := CurY * COLS + CurX; B := COLS * TRows - 1; end;
   end;
   for K := A to B do
     MemW[VSeg : K * 2] := (Word(Attr) shl 8) or 32;
@@ -308,7 +377,7 @@ begin
   N := Prm[0];
   case Final of
     'A': begin if N < 1 then N := 1; Dec(CurY, N); if CurY < 0 then CurY := 0; end;
-    'B': begin if N < 1 then N := 1; Inc(CurY, N); if CurY >= ROWS then CurY := ROWS - 1; end;
+    'B': begin if N < 1 then N := 1; Inc(CurY, N); if CurY >= TRows then CurY := TRows - 1; end;
     'C': begin if N < 1 then N := 1; Inc(CurX, N); if CurX >= COLS then CurX := COLS - 1; end;
     'D': begin if N < 1 then N := 1; Dec(CurX, N); if CurX < 0 then CurX := 0; end;
     'H', 'f':
@@ -317,7 +386,7 @@ begin
         if N < 1 then N := 1;
         if M < 1 then M := 1;
         CurY := N - 1; CurX := M - 1;
-        if CurY >= ROWS then CurY := ROWS - 1;
+        if CurY >= TRows then CurY := TRows - 1;
         if CurX >= COLS then CurX := COLS - 1;
       end;
     'J': EraseDisplay(N);
@@ -560,6 +629,10 @@ begin
     WriteLn('    /Q     no status line');
     WriteLn('    /I=cmd send this command as soon as the port opens');
     WriteLn('    /S=n   quit after n seconds (for unattended testing)');
+    WriteLn('    /R=n   send /I that many times, to force the screen to');
+    WriteLn('           scroll when testing');
+    WriteLn('    /V     print the finished screen through DOS, so a run');
+    WriteLn('           over the bridge can be checked without a camera');
     WriteLn;
     WriteLn('    ALT-X quit   ALT-H hang up   ALT-C clear');
     HelpTail;
@@ -568,7 +641,7 @@ begin
 
   WantCfg := 1; Baud := 9600; Bits := 8; Par := 0; Stop := 1;
   Batch := 0; Echo := False; Quiet := False; DialNum := '';
-  InitCmd := ''; RunSecs := 0;
+  InitCmd := ''; RunSecs := 0; Repeats := 1; DumpScr := False;
   for I := 1 to ParamCount do
   begin
     S := ParamStr(I);
@@ -589,11 +662,14 @@ begin
       'D': DialNum := Copy(S, 4, 40);
       'I': InitCmd := Copy(S, 4, 60);
       'S': RunSecs := NumArg(S, 4);
+      'R': Repeats := NumArg(S, 4);
+      'V': DumpScr := True;
       'T': CtrlTrace := True;
     end;
   end;
   if Baud < 50 then Baud := 9600;
   if Batch = 0 then Batch := SerBatchFor(Baud);
+  if Repeats < 1 then Repeats := 1;
 
   WriteLn('I/O base ', Hex4(Base), 'h');
 
@@ -633,6 +709,10 @@ begin
   end;
 
   ProbeVideo;
+  { One row is given up to the status line unless /Q asked for the whole
+    screen. Decided here, before anything paints, so every clear, scroll
+    and cursor clamp below agrees about where the text ends. }
+  if Quiet then TRows := ROWS else TRows := ROWS - 1;
   FgA := 7; BgA := 0; Bold := False; Rev := False;
   Recolour;
   CurX := 0; CurY := 0; SaveX := 0; SaveY := 0;
@@ -641,10 +721,37 @@ begin
   Status;
   SetHwCursor;
 
+  { /R sends the opening command more than once, which exists purely so
+    the screen can be made to SCROLL on demand. A single ATI7 is sixteen
+    lines and never reaches the bottom of a 24-row window, so it could
+    never have shown the status line being overwritten -- the bug was
+    found by a person watching the real screen, not by this program. }
   if InitCmd <> '' then
-  begin
-    PushStr(InitCmd); Push(13); Flush;
-  end;
+    for Rep := 1 to Repeats do
+    begin
+      PushStr(InitCmd); Push(13); Flush;
+      { Drain CONTINUOUSLY for the gap rather than sleeping and reading
+        once. A single read after a delay collects one 64-byte packet and
+        the rest of the reply backs up in the adapter until it is lost --
+        three ATI7s came back as 203 bytes when a single one is about 400.
+        The loop below is the same shape as the main terminal loop, which
+        is the point: the only reason this is separate code is the repeat
+        count. }
+      KickT0 := Ticks;
+      while True do
+      begin
+        KickEl := Ticks - KickT0;
+        if KickEl < 0 then Break;
+        if KickEl >= 27 then Break;          { about 1.5 seconds }
+        if SerRecv(Dev, KickBuf, SizeOf(KickBuf), KickGot) then
+          if KickGot > 0 then
+          begin
+            for Rc := 0 to KickGot - 1 do Emit(KickBuf[Rc]);
+            Inc(NRx, KickGot);
+            Status;
+          end;
+      end;
+    end;
 
   if DialNum <> '' then
   begin
@@ -658,6 +765,47 @@ begin
     off-hook, and a terminal is precisely the program somebody quits in a
     hurry. }
   SerClose(Dev);
+
+  { /V: print the finished screen back through DOS.
+
+    A terminal draws into video memory, which the bridge cannot capture,
+    so the only way to check its output from here was to photograph the
+    screen with a capture card and guess when to press the shutter. That
+    is a poor test -- three attempts in a row caught the wrong moment and
+    said nothing about the program. Dumping the text plane at exit is
+    deterministic, needs no camera, and shows exactly what the ANSI
+    handling and the scrolling actually produced, status line included. }
+  if DumpScr then
+  begin
+    { READ THE SCREEN BEFORE RESETTING THE VIDEO MODE.
+
+      The first version set mode 3 here to get a clean console and then
+      read the text plane -- but setting the mode CLEARS it, so it
+      faithfully dumped 25 blank rows after a session that had received
+      2087 bytes. The mode reset still happens, just below, after the
+      bytes have been read out. }
+    WriteLn;
+    WriteLn('--- screen as the terminal left it ---');
+    for DR := 0 to ROWS - 1 do
+    begin
+      DLine := '';
+      for DC := 0 to COLS - 1 do
+      begin
+        DB := Byte(MemW[VSeg : (DR * COLS + DC) * 2] and $FF);
+        if (DB >= 32) and (DB < 127) then
+          DLine := DLine + Chr(DB)
+        else
+          DLine := DLine + ' ';
+      end;
+      while (Length(DLine) > 0) and (DLine[Length(DLine)] = ' ') do
+        Dec(DLine[0]);
+      if DR = ROWS - 1 then
+        WriteLn('status|', DLine, '|')
+      else
+        WriteLn(DR:2, '|', DLine);
+    end;
+    WriteLn('--- end of screen ---');
+  end;
 
   { Back to DOS output, so a run over the bridge has something to show.
     Everything above this point went straight to video memory and was
