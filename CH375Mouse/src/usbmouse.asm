@@ -136,6 +136,61 @@ ser_ctl:  db    0                ; bulk OUT carrying the port control message
 ser_hdr:  db    0                ; status bytes at the head of every IN packet
 ser_ctog: db    0x80             ; toggle for the control endpoint
 ser_anyep: db   0                ; 1 = take endpoints whatever type they claim
+ser_bud:  db    0                ; reads left in this tick's drain
+ser_full: dw    0                ; drains that used the WHOLE budget, i.e.
+                                 ; ticks that ran out of patience with bytes
+                                 ; still waiting.  THIS is the backlog
+                                 ; indicator: reports delivered only measures
+                                 ; how much somebody moved the mouse, which
+                                 ; is why it could not answer whether the
+                                 ; drain was keeping up
+ser_reads: dw   0                ; successful reads, for a rate
+ser_over: dw    0                ; packets longer than the buffer
+
+; The last 40 bytes AS THEY ARRIVED, before the decoder groups them.  The
+; true cadence is only visible here: a log of assembled packets cannot show
+; it, because the decoder starts every packet on a header and so the
+; grouping is its own assumption reflected back.
+ser_hist: times 40 db 0
+ser_hi:   db    0                ; write position, 0..39
+
+; How big was each read?  A Keyspan asked to forward every byte should
+; answer with a status byte plus exactly one datum, over and over.  If it
+; does not -- if reads come back empty, or carrying several -- then the
+; cadence the decoder sees is not the cadence on the wire, and no amount of
+; work on the decoder will fix it.  Three counters settle which.
+ser_z:    dw    0                ; reads with no data at all
+ser_one:  dw    0                ; reads with exactly one data byte
+ser_many: dw    0                ; reads with two or more
+
+; Bytes drained this tick, before any of them are decoded.
+;
+; DRAIN FIRST, DECODE AFTER, and the order is the whole point.  The first
+; version called apply_report from inside the read loop, so between one
+; read and the next the driver drew a cursor, dispatched an event handler
+; and emitted a PS/2 packet -- milliseconds during which nothing was
+; servicing the adapter.  The probe tool reads back-to-back and sees a
+; clean five-byte cadence; the driver saw three-byte gaps in the same
+; stream from the same mouse, which is bytes going missing mid-stream
+; rather than any fault in the decoding.
+ser_q:    times 80 db 0
+ser_qn:   db    0
+
+; A buffer of its OWN, and both halves of that matter.
+;
+; rep_buf is eight bytes because a HID boot report is three and nothing
+; sensible is longer.  A serial adapter's bulk IN can carry a whole 64-byte
+; packet, and ch_read stores only the BL bytes it is given while RETURNING
+; THE CHIP'S FULL COUNT -- so reading a 12-byte packet into rep_buf with
+; BL=8 threw four bytes away and then told the caller there were twelve.
+; The decoder walked off the end of rep_buf and fed itself rep_count,
+; last_ist and rep_len as mouse movement.
+;
+; Separate, because ser_feed writes the finished report into rep_buf[0..2]
+; -- which, if the raw bytes lived there too, would overwrite the ones this
+; very batch had not read yet.
+SER_BUFSZ equ  72
+ser_buf:  times SER_BUFSZ db 0
 ser_n:    db    0                ; bytes of the packet being assembled
 ser_btn:  db    0                ; buttons held, decoded on the header byte
 ser_pkt:  times 8 db 0
@@ -434,6 +489,30 @@ poll_have:
         jmp     near poll_ret
 poll_free:
         mov     byte [in_poll], 1
+        ; DRAIN THE PIPE, DO NOT SIP FROM IT.
+        ;
+        ; A HID mouse sends one report per transaction and one transaction
+        ; per tick is exactly right.  A serial adapter does not: the Keyspan
+        ; is asked to forward every byte the moment it arrives -- which is
+        ; what keeps latency down -- so each USB packet carries ONE byte of
+        ; mouse data, and a five-byte report needs five transactions.
+        ;
+        ; At 145 ticks a second that is 145 bytes/s against a 1200-baud
+        ; mouse producing 120.  Twenty percent of headroom is not headroom:
+        ; lose a few ticks to another interrupt and the backlog sits in the
+        ; adapter, so movement arrives late and in bursts.  It reads as a
+        ; mouse that does not track properly, which is what it was.
+        ;
+        ; Sixteen reads a tick is three whole reports, and costs nothing
+        ; when the wire is quiet because the first NAK ends the drain.
+        ; FOUR, not sixteen.  The backlog counter read zero on every run,
+        ; so the budget was never being used -- it was pure exposure: each
+        ; extra read is a USB transaction inside a timer interrupt, and
+        ; when the chip was wrongly left retrying NAKs each one cost a full
+        ; timeout.  Four covers a whole three-byte report in one tick with
+        ; a read to spare, and the next tick is only 7 ms away.
+        mov     byte [ser_bud], 4
+poll_again:
 
         mov     al, CMD_SET_ENDP6
         call    ch_cmd
@@ -450,12 +529,19 @@ poll_free:
 
         mov     cx, 1500                 ; about 3 ms, then give up on this tick
         call    ch_wait
-        jc      short poll_done
+        jnc     short poll_st
+poll_done_t:                             ; trampoline: the serial read path
+        jmp     poll_done                ; pushed poll_done out of short reach
+poll_st:
         cmp     al, INT_SUCCESS
         je      short poll_got
         mov     [last_ist], al
         cmp     al, 0x2E                 ; STALL: clear it and resynchronise
-        jne     short poll_done
+        jne     short poll_done_t2
+        jmp     short poll_stall
+poll_done_t2:
+        jmp     poll_done
+poll_stall:
         mov     al, CMD_CLR_STALL
         call    ch_cmd
         mov     al, [ep_in]
@@ -464,18 +550,56 @@ poll_free:
         mov     cx, 1500
         call    ch_wait
         mov     byte [ep_tog], 0x80
-        jmp     short poll_done
+        jmp     poll_done
 
 poll_got:
+        cmp     byte [ser_mode], SM_HID
+        jne     short poll_got_ser
         mov     di, rep_buf
         mov     bl, 8
         call    ch_read
         mov     [rep_len], cl
         xor     byte [ep_tog], 0x40      ; DATA0 <-> DATA1
-        cmp     byte [ser_mode], SM_HID
-        je      short poll_hid
-        call    ser_bytes                ; a serial packet, not a HID report
+        jmp     short poll_hid
+poll_got_ser:
+        mov     di, ser_buf
+        mov     bl, SER_BUFSZ
+        call    ch_read
+        mov     [rep_len], cl
+        xor     byte [ep_tog], 0x40      ; DATA0 <-> DATA1
+        ; ch_read hands back what the CHIP said, not what it stored, so a
+        ; packet bigger than the buffer would otherwise send the decoder
+        ; off the end of it.  Counted, because "this cannot happen" is how
+        ; the last one got in.
+        cmp     cl, SER_BUFSZ
+        jbe     short poll_ser_fits
+        mov     cl, SER_BUFSZ
+        inc     word [ser_over]
+poll_ser_fits:
+        ; Tally the shape of this read before anything consumes it.
+        push    cx
+        sub     cl, [ser_hdr]
+        jbe     short poll_sz_zero
+        cmp     cl, 1
+        je      short poll_sz_one
+        inc     word [ser_many]
+        jmp     short poll_sz_done
+poll_sz_one:
+        inc     word [ser_one]
+        jmp     short poll_sz_done
+poll_sz_zero:
+        inc     word [ser_z]
+poll_sz_done:
+        pop     cx
+
+        call    ser_queue                ; stash it; decode after the drain
+        inc     word [ser_reads]
+        dec     byte [ser_bud]
+        jne     short poll_more
+        inc     word [ser_full]          ; budget gone and bytes still coming
         jmp     short poll_done
+poll_more:
+        jmp     poll_again               ; keep draining until it NAKs
 poll_hid:
         cmp     cl, 3
         jb      short poll_done
@@ -493,6 +617,15 @@ poll_nobtn:
         call    apply_report
 
 poll_done:
+        ; The drain is over; now it is safe to spend time.
+        cmp     byte [ser_mode], SM_HID
+        je      short poll_nodec
+        mov     cl, [ser_qn]
+        or      cl, cl
+        je      short poll_nodec
+        mov     byte [ser_qn], 0
+        call    ser_bytes
+poll_nodec:
         mov     byte [in_poll], 0
 poll_ret:
         ret
@@ -543,22 +676,52 @@ poll_hotplug:
 ; counting decoder that loses one is permanently one byte out -- which does
 ; not look like a lost byte, it looks like a mouse that jumps.
 ; --------------------------------------------------------------------------
+; Append this read's data bytes to the tick's queue, stripping the
+; adapter's per-packet status header.  No decoding, no cursor, no event
+; handlers -- nothing that takes time while the adapter is waiting.
+ser_queue:
+        mov     ch, 0
+        or      cl, cl
+        je      short sq_ret
+        mov     si, ser_buf
+        mov     al, [ser_hdr]
+        or      al, al
+        je      short sq_copy
+        cmp     cl, al
+        jbe     short sq_ret
+        mov     ah, 0
+        add     si, ax
+        sub     cl, al
+sq_copy:
+        mov     bl, [ser_qn]
+        mov     bh, 0
+sq_byte:
+        cmp     bx, 80
+        jae     short sq_done
+        lodsb
+        mov     [bx + ser_q], al
+        inc     bx
+        dec     cl
+        jne     short sq_byte
+sq_done:
+        mov     [ser_qn], bl
+sq_ret:
+        ret
+
 ser_bytes:
         mov     ch, 0
         or      cl, cl
         je      short sb_ret
-        mov     si, rep_buf
+        mov     si, ser_q
+        ; Status stripping already happened in ser_queue, so this sees only
+        ; data.  Kept as a parameter rather than hard-zeroed because the
+        ; queue is the only thing that changed, not the framing.
+        xor     al, al
         ; Some adapters put status bytes at the head of every IN packet --
         ; one on the Keyspan, two on FTDI.  They are not data and feeding
         ; them to the decoder would desynchronise it on every single packet.
-        mov     al, [ser_hdr]
         or      al, al
         je      short sb_loop
-        cmp     cl, al
-        jbe     short sb_ret
-        mov     ah, 0
-        add     si, ax
-        sub     cl, al
 sb_loop:
         lodsb
         call    ser_feed
@@ -567,67 +730,176 @@ sb_loop:
 sb_ret:
         ret
 
+; AX -> AL, clamped into a signed byte.  Movement past the clamp is lost
+; rather than wrapped, and losing it is much the lesser evil: a lost count
+; is a mouse that moves slightly less far than the hand did, and a wrapped
+; one is a mouse that jumps the other way.
+clamp_byte:
+        cmp     ax, 127
+        jle     short cb_lo
+        mov     ax, 127
+        ret
+cb_lo:
+        cmp     ax, -128
+        jge     short cb_out
+        mov     ax, -128
+cb_out:
+        ret
+
 ser_feed:
         push    cx
         push    si
+
+        ; LOG THE BYTE BEFORE ANYTHING INTERPRETS IT.
+        push    bx
+        mov     bl, [ser_hi]
+        mov     bh, 0
+        mov     [bx + ser_hist], al
+        inc     bl
+        cmp     bl, 40
+        jb      short sf_logok
+        xor     bl, bl
+sf_logok:
+        mov     [ser_hi], bl
+        pop     bx
+
         cmp     byte [ser_n], 0
         jne     short sf_body
-        ; Header: 1000 0LMR.  Anything else is a byte we are not in step
-        ; with, and dropping it is how the decoder finds its feet again.
+
+        ; A header is 1000 0LMR.  Anything else here is a byte we are not in
+        ; step with, and dropping it is how the decoder finds its feet.
         mov     ah, al
         and     ah, 0xF8
         cmp     ah, 0x80
         je      short sf_hdr
         inc     word [ser_lost]
-        jmp     short sf_out
+        jmp     sf_out
 sf_hdr:
-        xor     ah, ah
-        test    al, 0x04
-        jne     short sf_noleft
-        or      ah, 1
-sf_noleft:
-        test    al, 0x01
-        jne     short sf_noright
-        or      ah, 2
-sf_noright:
-        test    al, 0x02
-        jne     short sf_nomid
-        or      ah, 4
-sf_nomid:
-        mov     [ser_btn], ah
+        call    ser_btns
+        mov     byte [ser_n], 1
+        mov     [ser_pkt], al
+        jmp     sf_out
+
 sf_body:
+        ; THREE BYTES OR FIVE, DECIDED FROM THE STREAM AND NOT ASSUMED.
+        ;
+        ; Two protocols share this header shape.  MM Series sends THREE
+        ; bytes -- header, dx, dy -- and Mouse Systems sends FIVE, with a
+        ; second dx/dy pair sampled between reports.  A decoder that picks
+        ; one and hopes eats the next packet's header as dx2 on a mouse
+        ; that speaks the other, and then discards everything up to the
+        ; header after that: two bytes lost in every five, which measured
+        ; as a rock-steady 40% through four unrelated "fixes".
+        ;
+        ; The mouse on this bench is MM.  The probe tool read the same
+        ; mouse as Mouse Systems, which is what kept the wrong assumption
+        ; alive so long, so neither is safe to assume.
+        ;
+        ; The test is cheap and needs no configuration: after three bytes,
+        ; look at the fourth.  If it is a header, the packet was three
+        ; bytes and that byte begins the next one.  If it is not, it is
+        ; dx2 and this is a five-byte packet.  Being wrong once costs one
+        ; packet and corrects itself, which is what the old assumption
+        ; never did.
+        cmp     byte [ser_n], 3
+        jne     short sf_store
+        mov     ah, al
+        and     ah, 0xF8
+        cmp     ah, 0x80
+        jne     short sf_store           ; not a header: a five-byte packet
+
+        ; Three-byte packet complete, and AL starts the next one.
+        push    ax
+        call    ser_emit3
+        pop     ax
+        call    ser_btns
+        mov     byte [ser_n], 1
+        mov     [ser_pkt], al
+        jmp     short sf_out
+
+sf_store:
         mov     bl, [ser_n]
         mov     bh, 0
         mov     [bx + ser_pkt], al
         inc     byte [ser_n]
         cmp     byte [ser_n], 5
         jb      short sf_out
+        call    ser_emit5
         mov     byte [ser_n], 0
-        inc     word [ser_reps]
-
-        ; Build the three bytes apply_report already understands.  That is
-        ; the whole reason this driver needed a decoder and not a rewrite:
-        ; everything above the input layer is shared with the USB path.
-        mov     al, [ser_btn]
-        mov     [rep_buf], al
-        mov     al, [ser_pkt+1]
-        add     al, [ser_pkt+3]
-        mov     [rep_buf+1], al
-        mov     al, [ser_pkt+2]
-        add     al, [ser_pkt+4]
-        neg     al                       ; the protocol counts up, screens down
-        mov     [rep_buf+2], al
-
-        mov     al, [rep_buf]
-        and     al, 7
-        je      short sf_nobtn
-        or      [btn_seen], al
-        inc     word [btn_reps]
-sf_nobtn:
-        call    apply_report
 sf_out:
         pop     si
         pop     cx
+        ret
+
+; AL = header byte -> ser_btn.  The buttons are ACTIVE LOW: a 0 bit means
+; pressed, which is the easiest thing here to get backwards and gives a
+; mouse with three buttons held down for ever.
+ser_btns:
+        push    ax
+        xor     ah, ah
+        test    al, 0x04
+        jne     short sb_noleft
+        or      ah, 1
+sb_noleft:
+        test    al, 0x01
+        jne     short sb_noright
+        or      ah, 2
+sb_noright:
+        test    al, 0x02
+        jne     short sb_nomid
+        or      ah, 4
+sb_nomid:
+        mov     [ser_btn], ah
+        pop     ax
+        ret
+
+; MM Series: one dx and one dy.
+ser_emit3:
+        mov     al, [ser_pkt+1]
+        cbw
+        mov     bx, ax
+        mov     al, [ser_pkt+2]
+        cbw
+        neg     ax                       ; the protocol counts up, screens down
+        xchg    ax, bx
+        jmp     short ser_emit
+
+; Mouse Systems: two samples, summed.  IN SIXTEEN BITS -- +100 and +100 is
+; 200, which a byte turns into -56, so a fast flick would reverse.
+ser_emit5:
+        mov     al, [ser_pkt+1]
+        cbw
+        mov     bx, ax
+        mov     al, [ser_pkt+3]
+        cbw
+        add     bx, ax                   ; BX = dx
+        mov     al, [ser_pkt+2]
+        cbw
+        mov     si, ax
+        mov     al, [ser_pkt+4]
+        cbw
+        add     ax, si
+        neg     ax                       ; AX = dy, screen sense
+
+; AX = dy, BX = dx.  Hand it to the shared report path.
+ser_emit:
+        push    ax
+        inc     word [ser_reps]
+        mov     al, [ser_btn]
+        mov     [rep_buf], al
+        mov     ax, bx
+        call    clamp_byte
+        mov     [rep_buf+1], al
+        pop     ax
+        call    clamp_byte
+        mov     [rep_buf+2], al
+        mov     al, [rep_buf]
+        and     al, 7
+        je      short se_nobtn
+        or      [btn_seen], al
+        inc     word [btn_reps]
+se_nobtn:
+        call    apply_report
         ret
 
 ; --------------------------------------------------------------------------
@@ -1772,6 +2044,62 @@ stat_have:
         mov     ax, [es:btn_reps]
         call    putdecw
         call    crlf
+
+        ; The serial numbers, and only on the serial path.  They answer a
+        ; question "reports=" cannot: that counter rises with how much
+        ; somebody moved the mouse, so it says nothing about whether the
+        ; driver is keeping up with the mouse.  backlog does.
+        cmp     byte [es:ser_mode], SM_HID
+        jne     short stat_serial
+        jmp     stat_nops2
+stat_serial:
+        mov     dx, msg_s_sread
+        call    puts
+        mov     ax, [es:ser_reads]
+        call    putdecw
+        mov     dx, msg_s_spkt
+        call    puts
+        mov     ax, [es:ser_reps]
+        call    putdecw
+        mov     dx, msg_s_slost
+        call    puts
+        mov     ax, [es:ser_lost]
+        call    putdecw
+        mov     dx, msg_s_sfull
+        call    puts
+        mov     ax, [es:ser_full]
+        call    putdecw
+        call    crlf
+
+        ; The last eight packets, raw.  Five bytes each: status, dx1, dy1,
+        ; dx2, dy2.
+        mov     dx, msg_s_sz
+        call    puts
+        mov     ax, [es:ser_z]
+        call    putdecw
+        mov     dx, msg_s_sz1
+        call    puts
+        mov     ax, [es:ser_one]
+        call    putdecw
+        mov     dx, msg_s_szn
+        call    puts
+        mov     ax, [es:ser_many]
+        call    putdecw
+        call    crlf
+
+        mov     dx, msg_s_hist
+        call    puts
+        xor     si, si
+sh_byte:
+        mov     bx, si
+        mov     al, [es:bx + ser_hist]
+        call    puthex
+        mov     al, ' '
+        call    putc
+        inc     si
+        cmp     si, 40
+        jb      short sh_byte
+        call    crlf
         cmp     byte [es:ps2_on], 0
         je      short stat_nops2
         mov     dx, msg_s_ps2
@@ -2119,6 +2447,30 @@ bu_addr_ok:                                  ; short reach
         jc      short bu_fail
         mov     cx, 50
         call    delay_ms
+
+        ; SET_RETRY 00 BEFORE ANY ENDPOINT IS POLLED.  This path returns
+        ; here instead of falling through to bu_ready, and bu_ready is
+        ; where that was done -- so the chip stayed on 8F, RETRY NAKS FOR
+        ; EVER, which is right for enumeration and ruinous for polling.
+        ;
+        ; An idle endpoint then never answers, so every poll ran to
+        ; ch_wait's full timeout rather than returning on the NAK, and the
+        ; drain does that up to sixteen times per tick at 145 Hz.  The
+        ; machine spends its life in the timer interrupt and DOS crawls --
+        ; which is a resident driver making the whole computer slow, not a
+        ; mouse being imperfect.
+        ;
+        ; CH375Net hit this three times in one session and moved the fix
+        ; into the bring-up so no caller could forget it.  This is the
+        ; fourth, in a different project, for exactly the same reason: a
+        ; new code path that returns before the shared tail.
+        mov     al, CMD_SET_RETRY
+        call    ch_cmd
+        mov     al, 0x25
+        call    ch_wr
+        xor     al, al
+        call    ch_wr
+
         mov     byte [ep_tog], 0x80
         clc
         ret
@@ -2422,24 +2774,84 @@ so_keyspan:
         mov     byte [ser_msg + KS_RTS], 1
         mov     byte [ser_msg + KS_SETDTR], 1
         mov     byte [ser_msg + KS_DTR], 1
-        ; ONE character per USB packet.  A mouse report is five bytes and
-        ; must not wait in the adapter for a sixth: the obvious setting here
-        ; is eight, which is right for a terminal and, at 1200 baud, leaves
-        ; a stationary mouse's last report stranded for tens of
-        ; milliseconds.  Latency is the whole quality bar for a pointer.
-        mov     byte [ser_msg + KS_RXFWDLEN], 1
+        ; FORWARD A WHOLE REPORT AT A TIME, NOT A BYTE AT A TIME.
+        ;
+        ; One byte per USB packet looks like the low-latency choice and is
+        ; the wrong one for a driver that polls from a timer.  At 1200 baud
+        ; the next byte is 8.3 ms away, so a tick reads one byte and is then
+        ; NAKed -- which caps the driver at one byte per tick, 145 a second
+        ; against a mouse producing 120.  Margin that thin loses bytes at
+        ; the first interrupt that runs long, and a serial mouse packet with
+        ; a byte missing is not a slightly wrong movement, it is a
+        ; resynchronisation and the loss of the whole report.
+        ;
+        ; Measured at 1: 40% of bytes discarded hunting for a header, and it
+        ; stayed at 40% through a bigger buffer, a 16-read drain, and moving
+        ; the decode out of the read loop.  The probe tool gets a clean
+        ; stream from the same mouse only because it polls flat out in the
+        ; foreground, which a resident driver cannot do.
+        ;
+        ; Five is the size of a report, so the adapter forwards exactly when
+        ; one is complete -- no added latency for the thing being waited on
+        ; -- and the timeout still flushes a partial report if the mouse
+        ; stops mid-packet.
+        ; THREE, because that is what a report is on this mouse.  Five was
+        ; chosen when the framing was assumed to be Mouse Systems, and it
+        ; is one and two thirds of an MM report -- so the adapter was
+        ; forwarding across packet boundaries, which is the worst of both:
+        ; latency of nearly two reports AND a split in the middle of one.
+        ;
+        ; The timeout went to 8 at the same time and was self-defeating:
+        ; at 1200 baud the bytes are 8.3 ms apart, so the timeout always
+        ; won and the adapter sent one byte per packet regardless of the
+        ; length setting.  16 lets a whole report gather first.
+        mov     byte [ser_msg + KS_RXFWDLEN], 3
         mov     byte [ser_msg + KS_RXFWDTMO], 16
         mov     byte [ser_msg + KS_TXACK], 1
         mov     byte [ser_msg + KS_PORTEN], 1
         mov     byte [ser_msg + KS_RXFLUSH], 1
         mov     byte [ser_msg + KS_RETSTATUS], 1
 
+        ; POWER-CYCLE THE MOUSE, because a serial mouse chooses its
+        ; protocol from what it sees at power-up and its power is RTS and
+        ; DTR.  Opening once with the lines already high leaves a mouse
+        ; that was never reset, and one that has not been reset can come up
+        ; in a different mode entirely -- three-byte MM rather than the
+        ; five-byte Mouse Systems framing.
+        ;
+        ; This is not a guess about the mouse; it is the difference between
+        ; this driver and MOUPROBE, which opens, closes, waits, and opens
+        ; again.  MOUPROBE reads a flawless five-byte stream from this
+        ; mouse and the driver read three-byte packets from it in the same
+        ; minute.  Two readers, one mouse, two protocols: the reader that
+        ; resets it gets the one it asked for.
         push    cs
         pop     ds
         mov     si, ser_msg
         mov     cl, KS_LEN
         mov     al, [ser_ctl]
+        push    ax
+        ; First, with the lines DOWN: the mouse loses power.
+        mov     byte [ser_msg + KS_RTS], 0
+        mov     byte [ser_msg + KS_DTR], 0
+        mov     byte [ser_msg + KS_PORTEN], 0
         call    bulk_out_ser
+        mov     cx, 400
+        call    delay_ms
+        ; Then with them up again, which is the power-on it decides on.
+        mov     byte [ser_msg + KS_RTS], 1
+        mov     byte [ser_msg + KS_DTR], 1
+        mov     byte [ser_msg + KS_PORTEN], 1
+        pop     ax
+        push    cs
+        pop     ds
+        mov     si, ser_msg
+        mov     cl, KS_LEN
+        call    bulk_out_ser
+        pushf
+        mov     cx, 300                  ; let it announce itself and settle
+        call    delay_ms
+        popf
         ret
 so_generic:
         ; Recognised but not opened.  Saying so beats pretending: an adapter
@@ -3111,6 +3523,14 @@ msg_s_rep:     db '  reports=$'
 msg_s_rate:    db '  timer divisor=$'
 msg_s_btn:     db '  buttons seen=$'
 msg_s_brep:    db '  button reports=$'
+msg_s_sread:   db '  serial reads=$'
+msg_s_spkt:    db '  packets=$'
+msg_s_slost:   db '  bytes resynced past=$'
+msg_s_sfull:   db '  BACKLOG (drains that ran out of budget)=$'
+msg_s_sz:      db '  reads: empty=$'
+msg_s_sz1:     db '  one byte=$'
+msg_s_szn:     db '  several=$'
+msg_s_hist:    db '  last 40 bytes as received: $'
 msg_ps2:       db 'PS/2 BIOS mouse interface installed (INT 15h/11h/74h).', 13, 10, '$'
 msg_s_ps2:     db '  PS/2 interface: enabled=$'
 msg_s_ps2h:    db '  handler=$'
