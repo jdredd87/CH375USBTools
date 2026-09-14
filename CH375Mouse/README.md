@@ -28,6 +28,53 @@ CH375; if it finds no HID interface it asks whether the device is a
 USB-to-serial adapter, and if it is, opens the port at 1200 8N1 with RTS and
 DTR raised and decodes serial mouse packets instead of HID reports.
 
+### Two adapters, two mice, two protocols
+
+| adapter | mouse | verified |
+|---|---|---|
+| Keyspan `06CD:0121` | Mouse Systems, 1200 8N1, 5 bytes, 3 buttons | `MOUSETST` 34/34, `PS2TEST` 25/25 |
+| FTDI FT232 `0403:6001` | Microsoft, 1200 7N1, 3 bytes, 2 buttons | `MOUSETST` 34/34, 255 reports, 0 resyncs |
+
+**The driver works out both, and they are decided at different moments.**
+Which ADAPTER it is comes from the USB ID, before the port exists. Which
+MOUSE it is has to be settled before the framing is committed, because the
+two protocols disagree about the number of DATA BITS -- open the port at the
+wrong width and every byte arrives mangled, so no amount of looking at the
+stream afterwards can recover it.
+
+The mouse itself decides it. A Microsoft mouse answers `'M'` when its power
+comes up; a Mouse Systems mouse says nothing at all. So the driver opens at
+7N1, listens for about a second, and takes silence as the other answer --
+7 first because that is the one with a positive result, where silence at 8N1
+would mean nothing.
+
+```
+Serial mouse: Microsoft, 1200 7N1, 3 bytes.  bulk IN 1, control OUT 2, VID/PID 0403/6001
+USBMOUSE 1.1.0 resident.  INT 33h installed.
+```
+
+Nothing about the protocols resembles each other:
+
+| | Mouse Systems | Microsoft |
+|---|---|---|
+| framing | 1200 8N1 | 1200 **7**N1 |
+| packet | 5 bytes | 3 bytes |
+| sync bit | bit **7** of the header | bit **6** of the header |
+| movement | two whole samples, summed | **split across bytes** -- top 2 bits of each axis ride in the header |
+| buttons | **active LOW** | active HIGH |
+| Y | counts up | already screen sense |
+
+Decoding one with the other's rules does not fail loudly. Using Mouse
+Systems' active-low buttons on a Microsoft mouse reports a press on **every
+single packet**, which is what this driver did when it first met one.
+
+**An FTDI never NAKs.** It answers every poll with its two status bytes and
+no data, where a Keyspan NAKs when it has nothing. "Drain until it NAKs" is
+therefore a complete stopping rule on one part and an infinite loop's worth
+of wasted USB transactions on the other -- four per tick at 145 Hz, in the
+timer interrupt, for an idle mouse. The drain stops on a read that contained
+no DATA, which is right for both.
+
 ### A wrong diagnosis, and how it was reached
 
 This section said for a while that the mouse on the bench was a **3-byte MM

@@ -127,8 +127,18 @@ ep_in:  db      0                ; interrupt IN endpoint number
 ; ser_mode is a VALUE and not a flag for the reason USBPKT's link_mode is:
 ; a third source is likelier than a second was.
 SM_HID       equ 0                ; a USB HID mouse, straight into the CH375
-SM_MOUSESYS  equ 1                ; serial, 1200 8N1, five bytes, three buttons
-SM_MICROSOFT equ 2                ; serial, 1200 7N1, three bytes, two buttons
+SM_SERIAL    equ 1                ; a serial mouse on a USB-to-serial adapter
+
+; WHICH SERIAL MOUSE, which is a different question from which adapter.
+;
+; Microsoft is 1200 7N1 and three bytes; Mouse Systems is 1200 8N1 and five.
+; They disagree about the DATA BITS, so this cannot be sorted out by looking
+; at the stream after the fact -- open the port at the wrong width and the
+; bytes arrive mangled.  It has to be decided before the framing is set, and
+; the mouse itself is what decides it: a Microsoft mouse says 'M' when its
+; power comes up and a Mouse Systems mouse says nothing at all.
+SP_MOUSESYS  equ 0                ; five bytes, 8N1, three buttons, active low
+SP_MICROSOFT equ 1                ; three bytes, 7N1, two buttons, bit 6 sync
 
 ser_mode: db    SM_HID
 ser_out:  db    0                ; bulk OUT carrying data
@@ -137,6 +147,8 @@ ser_hdr:  db    0                ; status bytes at the head of every IN packet
 ser_ctog: db    0x80             ; toggle for the control endpoint
 ser_anyep: db   0                ; 1 = take endpoints whatever type they claim
 ser_bud:  db    0                ; reads left in this tick's drain
+ser_proto: db   SP_MOUSESYS       ; which serial mouse protocol
+ser_bits: db    7                 ; data bits the port is opened at
 ser_full: dw    0                ; drains that used the WHOLE budget, i.e.
                                  ; ticks that ran out of patience with bytes
                                  ; still waiting.  THIS is the backlog
@@ -573,14 +585,31 @@ poll_got_ser:
         mov     cl, SER_BUFSZ
         inc     word [ser_over]
 poll_ser_fits:
+        push    cx
         call    ser_queue                ; stash it; decode after the drain
         inc     word [ser_reads]
+        pop     cx
+
+        ; A SUCCESSFUL READ IS NOT THE SAME AS A READ WITH SOMETHING IN IT.
+        ;
+        ; The Keyspan NAKs when it has nothing, so "drain until it NAKs" was
+        ; a complete stopping rule.  An FTDI never NAKs: it answers every
+        ; single poll with its two status bytes and no data.  Under the old
+        ; rule the drain would spend its whole budget every tick, for ever,
+        ; on an idle mouse -- four USB transactions per tick at 145 Hz, in
+        ; the timer interrupt, for nothing.  That is the same shape of fault
+        ; as the SET_RETRY one that made DOS unusable, arriving by a
+        ; different road.
+        mov     al, [ser_hdr]
+        cmp     cl, al
+        jbe     short poll_drained       ; header only: the pipe is empty
         dec     byte [ser_bud]
         jne     short poll_more
         inc     word [ser_full]          ; budget gone and bytes still coming
+poll_drained:
         jmp     short poll_done
 poll_more:
-        jmp     poll_again               ; keep draining until it NAKs
+        jmp     poll_again
 poll_hid:
         cmp     cl, 3
         jb      short poll_done
@@ -731,6 +760,9 @@ ser_feed:
         push    cx
         push    si
 
+        cmp     byte [ser_proto], SP_MICROSOFT
+        je      ms_feed
+
         cmp     byte [ser_n], 0
         jne     short sf_body
 
@@ -798,6 +830,93 @@ sf_out:
         pop     si
         pop     cx
         ret
+
+; --------------------------------------------------------------------------
+; MICROSOFT.  Three bytes, and nothing about it resembles the other one.
+;
+;   byte 0   1 1 L R Y7 Y6 X7 X6     bit 6 SET marks the header
+;   byte 1   1 0 X5 X4 X3 X2 X1 X0
+;   byte 2   1 0 Y5 Y4 Y3 Y2 Y1 Y0
+;
+; The movement is SPLIT ACROSS BYTES -- the top two bits of each axis ride
+; in the header -- so a decoder cannot simply take bytes 1 and 2 as dx and
+; dy.  Doing that gives a mouse that works perfectly until you move it more
+; than 63 units in one report, and then wraps.
+;
+; The buttons are ACTIVE HIGH here, the opposite of Mouse Systems.  Decoding
+; one with the other's sense gives a mouse reporting a press on every single
+; packet, which is exactly what this driver did when it met this mouse.
+;
+; Sync is bit 6: set on the header, clear on the two body bytes.  That is a
+; different bit from the other protocol's, which is why the framing has to
+; be known rather than guessed.
+; --------------------------------------------------------------------------
+ms_feed:
+        test    al, 0x40
+        je      short ms_body
+        ; A header always starts a fresh report.
+        cmp     byte [ser_n], 0
+        je      short ms_hdr
+        inc     word [ser_lost]          ; a short report; start again
+ms_hdr:
+        mov     [ser_pkt], al
+        mov     byte [ser_n], 1
+        jmp     sf_out
+ms_body:
+        cmp     byte [ser_n], 0
+        jne     short ms_store
+        inc     word [ser_lost]          ; body byte with no header
+        jmp     sf_out
+ms_store:
+        mov     bl, [ser_n]
+        mov     bh, 0
+        mov     [bx + ser_pkt], al
+        inc     byte [ser_n]
+        cmp     byte [ser_n], 3
+        jb      short ms_part
+        mov     byte [ser_n], 0
+
+        ; X = the two bits from the header, then six from byte 1.
+        mov     al, [ser_pkt]
+        and     al, 0x03
+        mov     cl, 6
+        shl     al, cl
+        mov     ah, [ser_pkt+1]
+        and     ah, 0x3F
+        or      al, ah
+        cbw
+        mov     bx, ax                   ; BX = dx
+
+        ; Y likewise, from bits 2-3 of the header and byte 2.
+        mov     al, [ser_pkt]
+        and     al, 0x0C
+        mov     cl, 4
+        shl     al, cl                   ; bits 2-3 -> bits 6-7
+        mov     ah, [ser_pkt+2]
+        and     ah, 0x3F
+        or      al, ah
+        cbw                              ; Y is already screen sense: down
+                                         ; is positive, unlike Mouse Systems
+
+        ; Buttons, ACTIVE HIGH: bit 5 left, bit 4 right.  No middle button
+        ; in this protocol -- a third one needs the Logitech extension and
+        ; this mouse does not claim it.
+        push    ax
+        mov     al, [ser_pkt]
+        mov     ah, 0
+        test    al, 0x20
+        je      short ms_noleft
+        or      ah, 1
+ms_noleft:
+        test    al, 0x10
+        je      short ms_noright
+        or      ah, 2
+ms_noright:
+        mov     [ser_btn], ah
+        pop     ax
+        call    ser_emit
+ms_part:
+        jmp     sf_out
 
 ; AL = header byte -> ser_btn.  The buttons are ACTIVE LOW: a 0 bit means
 ; pressed, which is the easiest thing here to get backwards and gives a
@@ -2367,16 +2486,19 @@ bu_addr_ok:                                  ; short reach
         call    ch_wr
         mov     cx, 0xFFFF
         call    ch_wait
-        jc      short bu_fail
+        jnc     short bu_cfg_ok
+bu_fail_t3:                              ; the protocol sniff pushed bu_fail
+        jmp     bu_fail                  ; out of short reach again
+bu_cfg_ok:
         cmp     al, INT_SUCCESS
-        jne     short bu_fail
+        jne     short bu_fail_t3
         mov     di, cfg_buf
         mov     bl, 64
         call    ch_read
         mov     [cfg_len], cl
 
         call    parse_config
-        jc      short bu_fail
+        jc      short bu_fail_t3
 
         ; --- configure, then put the interface in boot protocol ---
         mov     al, CMD_SET_CONFIG
@@ -2385,9 +2507,12 @@ bu_addr_ok:                                  ; short reach
         call    ch_wr
         mov     cx, 0xFFFF
         call    ch_wait
-        jc      short bu_fail
+        jnc     short bu_setcfg_ok
+bu_fail_t4:
+        jmp     bu_fail
+bu_setcfg_ok:
         cmp     al, INT_SUCCESS
-        jne     short bu_fail
+        jne     short bu_fail_t4
         mov     cx, 50
         call    delay_ms
 
@@ -2395,8 +2520,53 @@ bu_addr_ok:                                  ; short reach
         ; boot-protocol requests below and would not understand this.
         cmp     byte [ser_mode], SM_HID
         je      short bu_nothid
+
+        ; ASK THE MOUSE WHICH IT IS, at 7N1 first.
+        ;
+        ; A Microsoft mouse announces itself with 'M' when its power comes
+        ; up, and needs seven data bits.  A Mouse Systems mouse announces
+        ; nothing and needs eight.  Opening at the wrong width does not
+        ; merely mislabel the mouse, it mangles every byte -- so this is
+        ; decided before the framing is committed, not inferred from the
+        ; stream afterwards.
+        ;
+        ; Seven first because it is the one with an answer: silence at 7N1
+        ; is a real result (Mouse Systems), where silence at 8N1 would be
+        ; ambiguous.
+        mov     byte [ser_bits], 7
         call    ser_open
         jc      short bu_fail
+
+        ; SET_RETRY 00 BEFORE THE SNIFF, not after it.
+        ;
+        ; The sniff polls an endpoint, and a poll is exactly what 8F ruins:
+        ; with NAKs retried for ever a read on a quiet line never returns,
+        ; it times out.  Every iteration of the listen loop then costs a
+        ; full timeout and hears nothing, so a Microsoft mouse that said 'M'
+        ; perfectly clearly is recorded as silent and gets opened at the
+        ; wrong width.
+        ;
+        ; This is the FIFTH appearance of this bug across these projects and
+        ; the second in this file, both times because a new piece of code
+        ; polls an endpoint somewhere the existing SET_RETRY did not cover.
+        mov     al, CMD_SET_RETRY
+        call    ch_cmd
+        mov     al, 0x25
+        call    ch_wr
+        xor     al, al
+        call    ch_wr
+
+        call    ser_sniff                ; CF clear if it said 'M'
+        jc      short bu_notms
+        mov     byte [ser_proto], SP_MICROSOFT
+        jmp     short bu_seropen
+bu_notms:
+        ; Nothing, so take it as Mouse Systems and re-open at eight bits.
+        mov     byte [ser_proto], SP_MOUSESYS
+        mov     byte [ser_bits], 8
+        call    ser_open
+        jc      short bu_fail
+bu_seropen:
         mov     cx, 50
         call    delay_ms
 
@@ -2605,6 +2775,146 @@ pc_fail:
         ret
 
 ; --------------------------------------------------------------------------
+; Listen for about a second for the byte a mouse sends when it powers up.
+; CF clear if 'M' arrived.
+;
+; Runs at install time, in the transient half, where a second is free -- the
+; resident driver never does this.
+; --------------------------------------------------------------------------
+ser_sniff:
+        mov     bp, 180                  ; ~1 s at 145 ticks, near enough
+snf_loop:
+        push    bp
+        mov     al, CMD_SET_ENDP6
+        call    ch_cmd
+        mov     al, [ep_tog]
+        call    ch_wr
+        mov     al, CMD_ISSUE_TOKEN
+        call    ch_cmd
+        mov     al, [ep_in]
+        mov     cl, 4
+        shl     al, cl
+        or      al, PID_IN
+        call    ch_wr
+        mov     cx, 1500
+        call    ch_wait
+        pop     bp
+        jc      short snf_next
+        cmp     al, INT_SUCCESS
+        jne     short snf_next
+
+        push    bp
+        push    cs
+        pop     es
+        mov     di, ser_buf
+        mov     bl, SER_BUFSZ
+        call    ch_read
+        pop     bp
+        xor     byte [ep_tog], 0x40
+        cmp     cl, SER_BUFSZ
+        jbe     short snf_fits
+        mov     cl, SER_BUFSZ
+snf_fits:
+        ; Skip the adapter's own status bytes, then look for 'M'.
+        mov     al, [ser_hdr]
+        cmp     cl, al
+        jbe     short snf_next
+        mov     ah, 0
+        mov     si, ser_buf
+        add     si, ax
+        sub     cl, al
+        mov     ch, 0
+snf_byte:
+        lodsb
+        cmp     al, 'M'
+        je      short snf_yes
+        loop    snf_byte
+snf_next:
+        mov     cx, 6
+        call    delay_ms
+        dec     bp
+        jnz     short snf_loop
+        stc
+        ret
+snf_yes:
+        clc
+        ret
+
+; --------------------------------------------------------------------------
+; A vendor request with no data stage.  AL = bRequest, BX = wValue,
+; DX = wIndex.  This is how every family except the Keyspan is configured:
+; the Keyspan takes a flat block on its own bulk endpoint, everyone else
+; uses endpoint 0.
+;
+; The arguments go to memory first because they have to survive a long run
+; of ch_wr calls, and "this helper probably preserves my registers" is the
+; kind of assumption that cost a whole diagnosis earlier in this driver.
+; --------------------------------------------------------------------------
+sc_req:   db 0
+sc_val:   dw 0
+sc_idx:   dw 0
+
+ser_ctrl:
+        mov     [cs:sc_req], al
+        mov     [cs:sc_val], bx
+        mov     [cs:sc_idx], dx
+
+        mov     al, CMD_WR_USB_DATA7
+        call    ch_cmd
+        mov     al, 8
+        call    ch_wr
+        mov     al, 0x40                 ; vendor, device, host to device
+        call    ch_wr
+        mov     al, [cs:sc_req]
+        call    ch_wr
+        mov     al, [cs:sc_val]
+        call    ch_wr
+        mov     al, [cs:sc_val+1]
+        call    ch_wr
+        mov     al, [cs:sc_idx]
+        call    ch_wr
+        mov     al, [cs:sc_idx+1]
+        call    ch_wr
+        xor     al, al
+        call    ch_wr                    ; wLength = 0
+        call    ch_wr
+
+        mov     al, CMD_SET_ENDP6
+        call    ch_cmd
+        mov     al, 0x80                 ; SETUP is always DATA0
+        call    ch_wr
+        mov     al, CMD_ISSUE_TOKEN
+        call    ch_cmd
+        mov     al, PID_SETUP
+        call    ch_wr
+        mov     cx, 0xFFFF
+        call    ch_wait
+        jc      short sc_bad
+        cmp     al, INT_SUCCESS
+        jne     short sc_bad
+
+        ; The status stage carries DATA1 and the chip has to be told, or it
+        ; reports a toggle mismatch instead of success.
+        mov     al, CMD_SET_ENDP6
+        call    ch_cmd
+        mov     al, 0xC0
+        call    ch_wr
+        mov     al, CMD_ISSUE_TOKEN
+        call    ch_cmd
+        mov     al, PID_IN
+        call    ch_wr
+        mov     cx, 0xFFFF
+        call    ch_wait
+        jc      short sc_bad
+        cmp     al, INT_SUCCESS
+        jne     short sc_bad
+        clc
+        ret
+sc_bad:
+        stc
+        ret
+
+; --------------------------------------------------------------------------
 ; Send CL bytes at SI to a bulk OUT endpoint AL, with its own toggle.
 ; --------------------------------------------------------------------------
 bulk_out_ser:
@@ -2696,7 +3006,11 @@ ser_open:
         cmp     byte [ser_vid+1], 0x06
         je      short so_keyspan
 so_gen_t:
+        cmp     word [ser_vid], 0x0403
+        je      short so_ftdi_t
         jmp     so_generic
+so_ftdi_t:
+        jmp     so_ftdi
 so_keyspan:
 
         push    cs
@@ -2713,11 +3027,13 @@ so_keyspan:
         mov     byte [ser_msg + KS_BAUDLO], 0x01
         mov     byte [ser_msg + KS_BAUDHI], 0x03
         mov     byte [ser_msg + KS_SETLCR], 1
+        ; The 16550 encoding: data bits as (count - 5), so 7N1 is 2 and
+        ; 8N1 is 3.  NOT the same as FTDI's, which wants the count itself.
+        mov     al, [ser_bits]
+        sub     al, 5
+        and     al, 3
+        mov     [ser_msg + KS_LCR], al
         ; The 16550 LCR: data bits in 0-1 as (bits - 5), so 8 bits is 3.
-        ; Mouse Systems is 8N1.  Getting this wrong does not silence the
-        ; mouse -- it strips bit 7 and delivers a stream that looks like no
-        ; protocol on earth, which is far more expensive than silence.
-        mov     byte [ser_msg + KS_LCR], 0x03
         mov     byte [ser_msg + KS_SETRXMODE], 1
         mov     byte [ser_msg + KS_SETTXMODE], 1
         mov     byte [ser_msg + KS_SETTXFLOW], 1
@@ -2805,6 +3121,65 @@ so_keyspan:
         call    delay_ms
         popf
         ret
+; --------------------------------------------------------------------------
+; FTDI.  Four vendor requests on endpoint 0, and a power cycle in the
+; middle of them for the same reason the Keyspan gets one: the mouse is
+; powered by RTS and DTR and decides what it is when they come up.
+;
+; The divisor is 3,000,000/baud held in eighths so the fraction survives,
+; with the fractional part encoded into the top two bits of wIndex through
+; a lookup that is not in numeric order.  At 1200 baud it comes out exact --
+; 3,000,000/1200 is 2500 with no fraction -- so wValue is 09C4 and wIndex
+; is zero, and none of that machinery is exercised here.  It is written out
+; longhand anyway because the next person will want a different rate.
+;
+; NOTE THE LCR IS NOT THE KEYSPAN'S.  FTDI puts the actual BIT COUNT in the
+; low bits, so 8N1 is 8; the Keyspan wants the 16550 encoding, where 8N1 is
+; 3.  Copying one into the other gives a port that opens cleanly and reads
+; garbage.
+so_ftdi:
+        mov     al, 0x00                 ; SIO_RESET, both directions
+        xor     bx, bx
+        xor     dx, dx
+        call    ser_ctrl
+        jc      short so_ftdi_no
+
+        mov     al, 0x03                 ; SET_BAUD_RATE
+        mov     bx, 0x09C4               ; 2500 = 1200 baud, exactly
+        xor     dx, dx
+        call    ser_ctrl
+        jc      short so_ftdi_no
+
+        mov     al, 0x04                 ; SET_DATA: bits 0-7, parity 8-10
+        mov     bl, [ser_bits]           ; FTDI wants the COUNT, not (count-5)
+        mov     bh, 0
+        xor     dx, dx
+        call    ser_ctrl
+        jc      short so_ftdi_no
+
+        ; Lines DOWN: the mouse loses power.
+        mov     al, 0x01                 ; SET_MODEM_CTRL
+        mov     bx, 0x0300               ; DTR and RTS both off, both masked
+        xor     dx, dx
+        call    ser_ctrl
+        jc      short so_ftdi_no
+        mov     cx, 400
+        call    delay_ms
+
+        ; Lines UP: this is the power-on the mouse decides on.
+        mov     al, 0x01
+        mov     bx, 0x0303               ; DTR and RTS both on
+        xor     dx, dx
+        call    ser_ctrl
+        jc      short so_ftdi_no
+        mov     cx, 300
+        call    delay_ms
+        clc
+        ret
+so_ftdi_no:
+        stc
+        ret
+
 so_generic:
         ; Recognised but not opened.  Saying so beats pretending: an adapter
         ; whose port was never enabled delivers nothing, and "no bytes" is
@@ -2835,7 +3210,7 @@ ser_detect:
         cmp     ax, 0x06CD                   ; Keyspan / InnoSys
         je      short sd_keyspan
         cmp     ax, 0x0403                   ; FTDI
-        je      short sd_generic
+        je      short sd_ftdi
         cmp     ax, 0x10C4                   ; Silicon Labs CP210x
         je      short sd_generic
         cmp     ax, 0x067B                   ; Prolific
@@ -2868,6 +3243,14 @@ sd_keyspan:
         ; is what makes this safe, and the CH375 issues a token the same way
         ; for either type in any case.
         mov     byte [ser_anyep], 1
+        jmp     short sd_walk
+sd_ftdi:
+        ; TWO status bytes on the head of EVERY bulk IN packet, including
+        ; the ones carrying no data -- which is how an idle FTDI answers
+        ; instead of NAKing.  A reader that does not strip them gets
+        ; rubbish interleaved with its data and blames the baud rate.
+        mov     byte [ser_hdr], 2
+        mov     byte [ser_anyep], 0
         jmp     short sd_walk
 sd_generic:
         mov     byte [ser_hdr], 0
@@ -2955,7 +3338,7 @@ sw_done:
         jne     short sw_ok
         mov     [ser_ctl], al
 sw_ok:
-        mov     byte [ser_mode], SM_MOUSESYS
+        mov     byte [ser_mode], SM_SERIAL
         clc
         ret
 sw_no:
@@ -3202,6 +3585,14 @@ report_fs:
         call    putdec
         jmp     short report_ids
 report_ser:
+        mov     dx, msg_proto
+        call    puts
+        mov     dx, msg_p_ms
+        cmp     byte [ser_proto], SP_MICROSOFT
+        je      short rs_say
+        mov     dx, msg_p_sys
+rs_say:
+        call    puts
         mov     dx, msg_found_s
         call    puts
         mov     al, [ep_in]
@@ -3462,7 +3853,10 @@ msg_t_r1c:     db '  after speed, reg 1C: $'
 msg_t_descr:   db '  GET_DESCR device   : $'
 msg_lowspd:    db 'Low-speed device; USB bus set to 1.5 Mbps.', 13, 10, '$'
 msg_found:     db 'USB mouse on CH375: endpoint $'
-msg_found_s:   db 'Serial mouse on a USB adapter: bulk IN $'
+msg_proto:     db 'Serial mouse: $'
+msg_p_ms:      db 'Microsoft, 1200 7N1, 3 bytes.  $'
+msg_p_sys:     db 'Mouse Systems, 1200 8N1, 5 bytes.  $'
+msg_found_s:   db 'bulk IN $'
 msg_serout:    db ', control OUT $'
 msg_iface:     db ', HID interface $'
 msg_vidpid:    db ', VID/PID $'
