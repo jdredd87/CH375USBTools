@@ -864,22 +864,32 @@ ser_emit3:
         xchg    ax, bx
         jmp     short ser_emit
 
-; Mouse Systems: two samples, summed.  IN SIXTEEN BITS -- +100 and +100 is
-; 200, which a byte turns into -56, so a fast flick would reverse.
+; Mouse Systems: TWO samples, and both are delivered.
+;
+; The mouse sampled itself twice between sends, so a packet holds two
+; successive movements rather than one movement split in half.  Summing
+; them is correct arithmetic and throws away the thing that makes a pointer
+; feel smooth: it turns two updates into one of twice the size, so the
+; cursor moves in fewer, larger steps.  Delivering both doubles the update
+; rate for nothing -- the data was already there and already paid for.
+;
+; It also sidesteps the overflow that summing them created: +100 and +100
+; is 200, which a byte turns into -56, so a fast flick used to reverse.
+; Two reports of 100 cannot overflow at all.
 ser_emit5:
         mov     al, [ser_pkt+1]
         cbw
-        mov     bx, ax
-        mov     al, [ser_pkt+3]
-        cbw
-        add     bx, ax                   ; BX = dx
+        mov     bx, ax                   ; first sample
         mov     al, [ser_pkt+2]
         cbw
-        mov     si, ax
+        neg     ax                       ; screens count down
+        call    ser_emit
+        mov     al, [ser_pkt+3]
+        cbw
+        mov     bx, ax                   ; second sample
         mov     al, [ser_pkt+4]
         cbw
-        add     ax, si
-        neg     ax                       ; AX = dy, screen sense
+        neg     ax
 
 ; AX = dy, BX = dx.  Hand it to the shared report path.
 ser_emit:

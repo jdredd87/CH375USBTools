@@ -26,7 +26,49 @@ same CH375 card.
 One driver, two input sources. `USBMOUSE.COM` enumerates whatever is on the
 CH375; if it finds no HID interface it asks whether the device is a
 USB-to-serial adapter, and if it is, opens the port at 1200 8N1 with RTS and
-DTR raised and decodes Mouse Systems packets instead of HID reports.
+DTR raised and decodes serial mouse packets instead of HID reports.
+
+### A wrong diagnosis, and how it was reached
+
+This section said for a while that the mouse on the bench was a **3-byte MM
+Series** device and that the driver had been wrongly assuming 5-byte Mouse
+Systems framing. That was wrong, and the way it went wrong is worth keeping.
+
+The driver really was losing 40% of its bytes, steadily, through four
+unrelated fixes. The cause was `SET_RETRY`: the serial bring-up returned
+before the point where the chip is put back to reporting NAKs, so it stayed
+on `8F` — retry NAKs for ever — and every poll of an idle endpoint ran to a
+full timeout. Bytes went missing.
+
+**Losing two bytes out of every five makes a five-byte packet look like a
+three-byte one.** The header lands three bytes after the last one, the
+values in between are plausible movement, and the stream reads as a
+textbook MM Series capture. So the byte loss was diagnosed as a second,
+independent fault — a protocol mismatch — when it was the first fault
+wearing a disguise.
+
+`MOUPROBE` read the same mouse as clean 5-byte Mouse Systems throughout,
+because it polls from the foreground and never hit the retry bug. Two
+readers disagreeing about one mouse was the clue, and it was treated as
+"the probe must be right about the protocol" rather than "one of these two
+is losing data".
+
+With the retry fixed, the stream is unambiguous:
+
+```
+87 00 00 00 00 | 83 00 00 00 00 | 81 00 00 00 00 | 87 00 00 00 00
+bytes resynced past = 0
+```
+
+Headers every five bytes, and nothing discarded.
+
+**The decoder handles both anyway**, and that is the part worth keeping
+rather than the diagnosis. After three bytes it looks at the fourth: a
+header means the packet was three bytes and that byte starts the next one;
+anything else means it is `dx2` and the packet is five. Being wrong costs
+one packet and corrects itself, where the fixed assumption never did. A
+3-byte MM mouse will work on this driver even though the one that prompted
+the work turned out not to be one.
 Everything above the input layer — INT 33h, the cursor, the event handlers,
 the PS/2 emulation for Windows 3.x — is shared, because none of it cares
 where a report came from. `apply_report` takes three bytes (buttons, dx, dy)
@@ -38,6 +80,13 @@ Serial mouse on a USB adapter: bulk IN 1, control OUT 2, VID/PID 06CD/0121
 USBMOUSE 1.1.0 resident.  INT 33h installed.
 ```
 
+**Windows 3.0 works.** `USBMOUSE /W` also presents the mouse as a PS/2 BIOS
+pointing device, and that path is above the input layer, so it does not care
+that the reports arrived over a serial adapter. `PS2TEST` — which replicates
+the exact call sequence Windows 3.0's `MOUSE.DRV` makes — passes 25/25 with
+the serial mouse, with **160 real packets delivered** through the PS/2 path
+while the mouse was moved.
+
 `MOUSETST` against it, with the mouse being moved and clicked:
 
 ```
@@ -45,6 +94,13 @@ USBMOUSE 1.1.0 resident.  INT 33h installed.
   live position 0,95 buttons 6
 34/34 checks passed.
 ```
+
+**Both movement samples in a packet are delivered, not summed.** Mouse
+Systems sends two successive samples per packet; adding them together is
+correct arithmetic and halves the number of cursor updates, so the pointer
+moves in fewer, larger steps. Delivering both doubles the update rate for
+nothing, and removes an overflow as a side effect — +100 and +100 summed in
+a byte is -56, so a fast flick used to reverse direction.
 
 The default `/R=8` gives a 145 Hz poll, which is what makes a serial mouse
 feel like a mouse: latency, not bandwidth, is the quality bar here. 1200
