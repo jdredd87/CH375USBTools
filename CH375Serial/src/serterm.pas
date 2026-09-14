@@ -104,6 +104,7 @@ var
   KickBuf : array[0..95] of Byte;
   KickGot : Byte;
   KickT0, KickEl : LongInt;
+  SelfTest : Boolean;
 
   { screen }
   { TRows is the height of the TERMINAL AREA, which is not the height of
@@ -127,6 +128,11 @@ var
 
   { ANSI parser }
   EscState: Byte;              { 0 normal, 1 saw ESC, 2 in CSI }
+  WrapPend: Boolean;           { the 80th column has been used }
+  AutoWrap: Boolean;           { DECAWM, ESC[?7h / ESC[?7l }
+  ParamQ  : Boolean;           { this CSI began with ? > or = }
+  Blink   : Boolean;           { SGR 5 }
+  NoBlink : Boolean;           { /K: bit 7 means bright background }
   Prm     : array[0..7] of Integer;
   NPrm    : Integer;
   PrmDig  : Boolean;
@@ -223,6 +229,7 @@ begin
   begin
     Attr := (B shl 4) or F;
     if Bold then Attr := Attr or $08;
+    if Blink then Attr := Attr or $80;
   end;
 end;
 
@@ -286,11 +293,34 @@ begin
   end;
 end;
 
+{ DEFERRED WRAP, which is what ANSI art needs and what a naive terminal
+  gets wrong.
+
+  Writing the 80th character must NOT move to the next line. It leaves the
+  cursor parked on column 79 with a wrap PENDING, and the line break only
+  happens if another printable character actually arrives. Wrapping eagerly
+  puts a blank line after every full row, so a picture drawn exactly 80
+  columns wide comes out double-spaced and twice the height -- the single
+  most common way ANSI art renders wrong.
+
+  Anything that moves the cursor deliberately -- CR, LF, backspace, a
+  cursor-positioning sequence -- cancels the pending wrap, because the
+  question it answers is only "where does the NEXT character go if nothing
+  else has happened". }
 procedure PutRaw(C: Char);
 begin
+  if WrapPend then
+  begin
+    NewLine;
+    WrapPend := False;
+  end;
   MemW[VSeg : (CurY * COLS + CurX) * 2] := (Word(Attr) shl 8) or Ord(C);
   Inc(CurX);
-  if CurX >= COLS then NewLine;
+  if CurX >= COLS then
+  begin
+    CurX := COLS - 1;
+    WrapPend := AutoWrap;
+  end;
 end;
 
 { Same reasoning as ScrollUp: one string instruction rather than 2000
@@ -344,6 +374,172 @@ begin
   if Mode = 2 then begin CurX := 0; CurY := 0; end;
 end;
 
+{ Blank one row of the text area. }
+procedure BlankRow(R: Integer);
+var Fill, Off: Word;
+begin
+  if (R < 0) or (R >= TRows) then Exit;
+  Fill := (Word(Attr) shl 8) or 32;
+  Off := Word(R) * COLS * 2;
+  asm
+    push es
+    push di
+    mov cx, COLS
+    mov ax, Fill
+    mov dx, VSeg
+    mov es, dx
+    mov di, Off
+    cld
+    rep stosw
+    pop di
+    pop es
+  end;
+end;
+
+{ Move a block of rows. Count rows starting at From land at Dest.
+  Direction is handled by choosing forward or backward copy, so
+  overlapping moves -- which is every insert and delete -- stay correct. }
+procedure MoveRows(Dest, From, Count: Integer);
+var
+  K: Integer;
+  SOff, DOff, Words: Word;
+begin
+  if (Count <= 0) or (Dest = From) then Exit;
+  Words := COLS;
+  if Dest < From then
+    for K := 0 to Count - 1 do
+    begin
+      SOff := Word(From + K) * COLS * 2;
+      DOff := Word(Dest + K) * COLS * 2;
+      asm
+        push ds
+        push es
+        push si
+        push di
+        mov cx, Words
+        mov ax, VSeg
+        mov es, ax
+        mov ds, ax
+        mov si, SOff
+        mov di, DOff
+        cld
+        rep movsw
+        pop di
+        pop si
+        pop es
+        pop ds
+      end;
+    end
+  else
+    for K := Count - 1 downto 0 do
+    begin
+      SOff := Word(From + K) * COLS * 2;
+      DOff := Word(Dest + K) * COLS * 2;
+      asm
+        push ds
+        push es
+        push si
+        push di
+        mov cx, Words
+        mov ax, VSeg
+        mov es, ax
+        mov ds, ax
+        mov si, SOff
+        mov di, DOff
+        cld
+        rep movsw
+        pop di
+        pop si
+        pop es
+        pop ds
+      end;
+    end;
+end;
+
+{ IL / DL: insert or delete N lines at the cursor row, the rest of the
+  text area shuffling down or up. A full-screen editor over a serial line
+  is built almost entirely out of these two. }
+procedure InsertLines(N: Integer);
+var K: Integer;
+begin
+  if N < 1 then N := 1;
+  if N > TRows - CurY then N := TRows - CurY;
+  MoveRows(CurY + N, CurY, TRows - CurY - N);
+  for K := 0 to N - 1 do BlankRow(CurY + K);
+end;
+
+procedure DeleteLines(N: Integer);
+var K: Integer;
+begin
+  if N < 1 then N := 1;
+  if N > TRows - CurY then N := TRows - CurY;
+  MoveRows(CurY, CurY + N, TRows - CurY - N);
+  for K := 0 to N - 1 do BlankRow(TRows - 1 - K);
+end;
+
+{ ICH / DCH / ECH: the same idea along a row rather than down the screen.
+  Done a cell at a time because a row is only eighty words and the string
+  instructions would need a segment reload per call for no gain. }
+procedure InsertChars(N: Integer);
+var K: Integer;
+begin
+  if N < 1 then N := 1;
+  for K := COLS - 1 downto CurX + N do
+    MemW[VSeg : (CurY * COLS + K) * 2] :=
+      MemW[VSeg : (CurY * COLS + K - N) * 2];
+  for K := CurX to CurX + N - 1 do
+    if K < COLS then
+      MemW[VSeg : (CurY * COLS + K) * 2] := (Word(Attr) shl 8) or 32;
+end;
+
+procedure DeleteChars(N: Integer);
+var K: Integer;
+begin
+  if N < 1 then N := 1;
+  for K := CurX to COLS - 1 - N do
+    MemW[VSeg : (CurY * COLS + K) * 2] :=
+      MemW[VSeg : (CurY * COLS + K + N) * 2];
+  for K := COLS - N to COLS - 1 do
+    if K >= 0 then
+      MemW[VSeg : (CurY * COLS + K) * 2] := (Word(Attr) shl 8) or 32;
+end;
+
+procedure EraseChars(N: Integer);
+var K: Integer;
+begin
+  if N < 1 then N := 1;
+  for K := CurX to CurX + N - 1 do
+    if K < COLS then
+      MemW[VSeg : (CurY * COLS + K) * 2] := (Word(Attr) shl 8) or 32;
+end;
+
+{ Turn the hardware cursor on or off (DECTCEM). Hiding it is what stops a
+  block flickering around the screen while a picture is being painted. }
+procedure ShowCursor(On_: Boolean);
+begin
+  if On_ then
+    asm
+      mov ah, $01
+      mov ch, 6
+      mov cl, 7
+      int $10
+    end
+  else
+    asm
+      mov ah, $01
+      mov cx, $2000
+      int $10
+    end;
+end;
+
+{ Forward: the ANSI machine has to answer a device-status request, which
+  means sending, and the transmit side is declared further down with the
+  keyboard it normally serves. Named TxFlush rather than Flush because the
+  RTL already has a Flush(var Text) and the collision is silent until the
+  first call site fails to resolve. }
+procedure TxFlush; forward;
+procedure PushStr(const T: ShortString); forward;
+
 { ---- the ANSI state machine -------------------------------------- }
 
 procedure ApplySgr;
@@ -358,14 +554,30 @@ begin
     V := Prm[K];
     if V = 0 then
     begin
-      FgA := 7; BgA := 0; Bold := False; Rev := False;
+      FgA := 7; BgA := 0; Bold := False; Rev := False; Blink := False;
     end
     else if V = 1 then Bold := True
+    { SGR 5 is "blink", and on a PC that is attribute bit 7 -- which is the
+      same bit that means BRIGHT BACKGROUND once blinking is turned off.
+      ANSI artists used it for both, so it has to be carried either way and
+      /K decides which the hardware does with it. }
+    else if V = 5 then Blink := True
     else if V = 7 then Rev := True
     else if V = 22 then Bold := False
+    else if V = 25 then Blink := False
     else if V = 27 then Rev := False
     else if (V >= 30) and (V <= 37) then FgA := AnsiToPc[V - 30]
-    else if (V >= 40) and (V <= 47) then BgA := AnsiToPc[V - 40];
+    else if (V >= 40) and (V <= 47) then BgA := AnsiToPc[V - 40]
+    { aixterm's bright pairs. Rare in classic art but free to support, and
+      a modern host that sends them would otherwise be silently ignored. }
+    else if (V >= 90) and (V <= 97) then
+    begin
+      FgA := AnsiToPc[V - 90]; Bold := True;
+    end
+    else if (V >= 100) and (V <= 107) then
+    begin
+      BgA := AnsiToPc[V - 100]; Blink := True;
+    end;
   end;
   Recolour;
 end;
@@ -375,6 +587,9 @@ var N, M: Integer;
 begin
   if NPrm = 0 then begin Prm[0] := 0; NPrm := 1; end;
   N := Prm[0];
+  { Any sequence that positions the cursor settles the question a pending
+    wrap was waiting to answer. }
+  if Final <> 'm' then WrapPend := False;
   case Final of
     'A': begin if N < 1 then N := 1; Dec(CurY, N); if CurY < 0 then CurY := 0; end;
     'B': begin if N < 1 then N := 1; Inc(CurY, N); if CurY >= TRows then CurY := TRows - 1; end;
@@ -389,11 +604,86 @@ begin
         if CurY >= TRows then CurY := TRows - 1;
         if CurX >= COLS then CurX := COLS - 1;
       end;
+    'E':                                  { CNL }
+      begin
+        if N < 1 then N := 1;
+        Inc(CurY, N); CurX := 0;
+        if CurY >= TRows then CurY := TRows - 1;
+      end;
+    'F':                                  { CPL }
+      begin
+        if N < 1 then N := 1;
+        Dec(CurY, N); CurX := 0;
+        if CurY < 0 then CurY := 0;
+      end;
+    'G', '`':                             { CHA, absolute column }
+      begin
+        if N < 1 then N := 1;
+        CurX := N - 1;
+        if CurX >= COLS then CurX := COLS - 1;
+      end;
+    'd':                                  { VPA, absolute row }
+      begin
+        if N < 1 then N := 1;
+        CurY := N - 1;
+        if CurY >= TRows then CurY := TRows - 1;
+      end;
     'J': EraseDisplay(N);
     'K': EraseLine(N);
+    'L': InsertLines(N);
+    'M': DeleteLines(N);
+    '@': InsertChars(N);
+    'P': DeleteChars(N);
+    'X': EraseChars(N);
+    'S':                                  { SU, scroll the area up }
+      begin
+        if N < 1 then N := 1;
+        for M := 1 to N do ScrollUp;
+      end;
+    'T':                                  { SD, scroll the area down }
+      begin
+        if N < 1 then N := 1;
+        for M := 1 to N do
+        begin
+          MoveRows(1, 0, TRows - 1);
+          BlankRow(0);
+        end;
+      end;
     'm': ApplySgr;
     's': begin SaveX := CurX; SaveY := CurY; end;
     'u': begin CurX := SaveX; CurY := SaveY; end;
+    'n':
+      { DEVICE STATUS REPORT, and the reason it earns its place: a BBS
+        asks ESC[6n to find out whether there is a terminal on the other
+        end and how big it is, and sends plain ASCII to anything that does
+        not answer. A terminal that ignores this one sequence never gets
+        shown any ANSI art at all. The reply goes back up the wire as if
+        it had been typed. }
+      begin
+        if N = 6 then
+          PushStr(#27'[' + Dec1(CurY + 1) + ';' + Dec1(CurX + 1) + 'R')
+        else if N = 5 then
+          PushStr(#27'[0n');
+        TxFlush;
+      end;
+    'c':
+      { DEVICE ATTRIBUTES. Answer as a plain VT101 with no options. }
+      begin
+        PushStr(#27'[?1;0c');
+        TxFlush;
+      end;
+    'h', 'l':
+      { Private modes, which arrive with a '?' that ParamQ has recorded.
+        Only two matter here: 7 is autowrap and 25 is cursor visibility. }
+      if ParamQ then
+      begin
+        if N = 25 then ShowCursor(Final = 'h')
+        else if N = 7 then
+        begin
+          AutoWrap := Final = 'h';
+          WrapPend := False;
+        end;
+      end;
   end;
 end;
 
@@ -406,11 +696,12 @@ begin
     0:
       begin
         if B = 27 then EscState := 1
-        else if B = 13 then CurX := 0
-        else if B = 10 then NewLine
+        else if B = 13 then begin CurX := 0; WrapPend := False; end
+        else if B = 10 then begin NewLine; WrapPend := False; end
         else if B = 8 then
         begin
           if CurX > 0 then Dec(CurX);
+          WrapPend := False;
         end
         else if B = 9 then
         begin
@@ -424,15 +715,29 @@ begin
         if C = '[' then
         begin
           EscState := 2;
-          NPrm := 0; PrmDig := False;
+          NPrm := 0; PrmDig := False; ParamQ := False;
           for I := 0 to 7 do Prm[I] := 0;
         end
+        else if C = '7' then
+        begin
+          { DECSC, the non-CSI save. Some hosts use this instead of ESC[s. }
+          SaveX := CurX; SaveY := CurY; EscState := 0;
+        end
+        else if C = '8' then
+        begin
+          CurX := SaveX; CurY := SaveY; WrapPend := False; EscState := 0;
+        end
+        else if (C = '(') or (C = ')') or (C = '#') then
+          { A character-set select; the byte after it is part of the
+            sequence and must not reach the screen. }
+          EscState := 3
         else
           { Anything else after ESC is a sequence this does not implement.
             Swallow it rather than print it: a terminal that echoes the
             codes it cannot handle wrecks the screen it is drawing. }
           EscState := 0;
       end;
+    3: EscState := 0;          { swallow the byte after ESC ( ) # }
     2:
       begin
         if (B >= Ord('0')) and (B <= Ord('9')) then
@@ -455,11 +760,21 @@ begin
           RunCsi(C);
           EscState := 0;
         end
-        else if C = '?' then
+        else if (C = '?') or (C = '>') or (C = '=') then ParamQ := True
+        else if C = ' ' then
         else
           EscState := 0;
       end;
   end;
+end;
+
+{ Feed a whole string through the terminal, as if it had arrived on the
+  wire. Used by the self test, which is the only caller that has bytes
+  without a serial port to have produced them. }
+procedure EmitStr(const T: ShortString);
+var K: Integer;
+begin
+  for K := 1 to Length(T) do Emit(Ord(T[K]));
 end;
 
 { ---- status line ------------------------------------------------- }
@@ -509,7 +824,7 @@ var
   OutB : array[0..79] of Byte;
   OutN : Byte;
 
-procedure Flush;
+procedure TxFlush;
 begin
   if OutN = 0 then Exit;
   if SerSend(Dev, OutB, OutN) then Inc(NTx, OutN);
@@ -520,7 +835,7 @@ procedure Push(B: Byte);
 begin
   OutB[OutN] := B;
   Inc(OutN);
-  if OutN >= 60 then Flush;
+  if OutN >= 60 then TxFlush;
   if Echo then Emit(B);
 end;
 
@@ -528,7 +843,7 @@ procedure PushStr(const T: ShortString);
 var K: Integer;
 begin
   for K := 1 to Length(T) do Push(Ord(T[K]));
-  Flush;
+  TxFlush;
 end;
 
 { Arrow keys and the like become the ANSI sequences a host expects. }
@@ -583,7 +898,7 @@ begin
       begin
         case Hi of
           $2D: begin Running := False; end;          { ALT-X }
-          $23: begin PushStr('ATH'); Push(13); Flush; end;  { ALT-H }
+          $23: begin PushStr('ATH'); Push(13); TxFlush; end;  { ALT-H }
           $2E: begin ClearScreen; end;               { ALT-C }
         else
           SendExtended(Hi);
@@ -592,7 +907,7 @@ begin
       else
         Push(Lo);
     end;
-    Flush;
+    TxFlush;
 
     { serial }
     if SerRecv(Dev, Buf, SizeOf(Buf), Got) then
@@ -633,6 +948,8 @@ begin
     WriteLn('           scroll when testing');
     WriteLn('    /V     print the finished screen through DOS, so a run');
     WriteLn('           over the bridge can be checked without a camera');
+    WriteLn('    /K     blink bit becomes bright-background (ANSI art)');
+    WriteLn('    /A     draw the built-in ANSI test pattern and stop');
     WriteLn;
     WriteLn('    ALT-X quit   ALT-H hang up   ALT-C clear');
     HelpTail;
@@ -642,6 +959,8 @@ begin
   WantCfg := 1; Baud := 9600; Bits := 8; Par := 0; Stop := 1;
   Batch := 0; Echo := False; Quiet := False; DialNum := '';
   InitCmd := ''; RunSecs := 0; Repeats := 1; DumpScr := False;
+  NoBlink := False; SelfTest := False;
+  WrapPend := False; Blink := False; AutoWrap := True; ParamQ := False;
   for I := 1 to ParamCount do
   begin
     S := ParamStr(I);
@@ -664,6 +983,8 @@ begin
       'S': RunSecs := NumArg(S, 4);
       'R': Repeats := NumArg(S, 4);
       'V': DumpScr := True;
+      'K': NoBlink := True;
+      'A': SelfTest := True;
       'T': CtrlTrace := True;
     end;
   end;
@@ -709,6 +1030,18 @@ begin
   end;
 
   ProbeVideo;
+  { INT 10h AX=1003h BL=0 switches the attribute's top bit from "blink" to
+    "bright background", which is what most ANSI art was actually drawn
+    for -- sixteen background colours rather than eight and a flash. It is
+    off by default because it is a global video state that outlives this
+    program, and a terminal that silently changes how the whole machine
+    renders text afterwards is a rude thing to write. }
+  if NoBlink then
+    asm
+      mov ax, $1003
+      mov bl, 0
+      int $10
+    end;
   { One row is given up to the status line unless /Q asked for the whole
     screen. Decided here, before anything paints, so every clear, scroll
     and cursor clamp below agrees about where the text ends. }
@@ -726,10 +1059,66 @@ begin
     lines and never reaches the bottom of a 24-row window, so it could
     never have shown the status line being overwritten -- the bug was
     found by a person watching the real screen, not by this program. }
+  { THE ANSI SELF TEST.
+
+    The renderer cannot be checked against a BBS that is not there, and it
+    does not need to be: it is a pure function from a byte stream to a
+    screen. Feeding it a known stream and dumping the result with /V tests
+    exactly the code in question, with no modem, no line and no timing.
+
+    It exercises the four things that separate a terminal from a printer:
+    absolute cursor positioning, SGR colour, CP437 line-drawing and
+    shading characters, and an EXACTLY 80-column row -- which is the one
+    that catches eager wrapping. }
+  if SelfTest then
+  begin
+    EmitStr(#27'[2J'#27'[1;1H');
+    EmitStr(#27'[1;33m ANSI self test '#27'[0m');
+    EmitStr(#27'[3;1H');
+    { A double-line box in CP437: 201 205 187 / 186 / 200 205 188 }
+    EmitStr(#27'[36m' + Chr(201));
+    for Rep := 1 to 28 do EmitStr(Chr(205));
+    EmitStr(Chr(187));
+    EmitStr(#27'[4;1H' + Chr(186) + #27'[4;30H' + Chr(186));
+    EmitStr(#27'[5;1H' + Chr(200));
+    for Rep := 1 to 28 do EmitStr(Chr(205));
+    EmitStr(Chr(188) + #27'[0m');
+    EmitStr(#27'[4;3H' + #27'[1;37mboxed'#27'[0m');
+
+    { Eight foreground colours, then eight backgrounds. }
+    EmitStr(#27'[7;1Hfg:');
+    for Rep := 0 to 7 do
+    begin
+      EmitStr(#27'[3' + Chr(48 + Rep) + 'm');
+      EmitStr(Chr(219) + Chr(219));
+    end;
+    EmitStr(#27'[0m'#27'[8;1Hbg:');
+    for Rep := 0 to 7 do
+    begin
+      EmitStr(#27'[4' + Chr(48 + Rep) + 'm  ');
+    end;
+    EmitStr(#27'[0m');
+
+    { Shading blocks, the other half of ANSI art. }
+    EmitStr(#27'[9;1Hshade:'#27'[37m');
+    for Rep := 1 to 8 do EmitStr(Chr(176));
+    for Rep := 1 to 8 do EmitStr(Chr(177));
+    for Rep := 1 to 8 do EmitStr(Chr(178));
+    for Rep := 1 to 8 do EmitStr(Chr(219));
+    EmitStr(#27'[0m');
+
+    { Exactly 80 columns. If the wrap is eager this leaves a blank row
+      after it and everything below is pushed down by one. }
+    EmitStr(#27'[11;1H');
+    for Rep := 1 to 8 do EmitStr('1234567890');
+    EmitStr(#27'[12;1Hthis line must sit directly under the 80 digits');
+    TxFlush;
+  end;
+
   if InitCmd <> '' then
     for Rep := 1 to Repeats do
     begin
-      PushStr(InitCmd); Push(13); Flush;
+      PushStr(InitCmd); Push(13); TxFlush;
       { Drain CONTINUOUSLY for the gap rather than sleeping and reading
         once. A single read after a delay collects one 64-byte packet and
         the rest of the reply backs up in the adapter until it is lost --
@@ -755,8 +1144,8 @@ begin
 
   if DialNum <> '' then
   begin
-    PushStr('ATX3');  Push(13); Flush;
-    PushStr('ATDT' + DialNum); Push(13); Flush;
+    PushStr('ATX3');  Push(13); TxFlush;
+    PushStr('ATDT' + DialNum); Push(13); TxFlush;
   end;
 
   Terminal;
@@ -792,8 +1181,17 @@ begin
       for DC := 0 to COLS - 1 do
       begin
         DB := Byte(MemW[VSeg : (DR * COLS + DC) * 2] and $FF);
+        { CP437 graphics are the point of ANSI art, so they must not be
+          filtered away by the very tool checking for them -- the first
+          version mapped everything outside plain ASCII to a space and
+          reported the box-drawing and shading rows as blank. Printable
+          ASCII goes through as itself; anything above it becomes '#', so
+          its PRESENCE and position are visible even though a captured
+          text file cannot show the glyph. }
         if (DB >= 32) and (DB < 127) then
           DLine := DLine + Chr(DB)
+        else if DB >= 127 then
+          DLine := DLine + '#'
         else
           DLine := DLine + ' ';
       end;

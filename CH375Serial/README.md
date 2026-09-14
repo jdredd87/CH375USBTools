@@ -356,6 +356,58 @@ monitor sums the guns and two different colours land on the same grey.
 swapped. Getting that wrong gives you a BBS that is readable but wrong, which
 is the hardest kind of bug to notice.
 
+### ANSI graphics
+
+Yes — run `SERTERM /A` to draw the built-in test pattern:
+
+![the ANSI self test](doc/ansi.png)
+
+CP437 line-drawing and shading characters, colour in the correct order, and an
+exactly-80-column row with the next line directly beneath it.
+
+| | |
+|---|---|
+| cursor | `CUU CUD CUF CUB` `CUP HVP` `CNL CPL` `CHA VPA` `SCP RCP` `DECSC DECRC` |
+| erase | `ED` `EL` `ECH` |
+| editing | `IL` `DL` `ICH` `DCH` `SU` `SD` |
+| colour | `SGR` 0,1,5,7,22,25,27, 30–37, 40–47, and aixterm 90–97 / 100–107 |
+| modes | `DECAWM` (`?7h/l`) `DECTCEM` (`?25h/l`) |
+| reports | `DSR` (`6n`, `5n`) and `DA` (`c`) |
+| characters | **full CP437** — 128–255 pass straight through to video memory |
+
+**Answering `ESC[6n` matters more than it looks.** A BBS asks it to find out
+whether there is a terminal at the other end, and sends plain ASCII to anything
+that stays quiet. A terminal that ignores that one sequence never gets shown any
+ANSI art at all.
+
+**`/K` turns the blink bit into a bright-background bit** (`INT 10h AX=1003h`),
+which is what most ANSI art was actually drawn for — sixteen background colours
+rather than eight and a flash. It is off by default because it is global video
+state that outlives the program, and silently changing how the whole machine
+renders text afterwards would be rude.
+
+Not implemented: scroll regions (`DECSTBM`), mouse reporting, and 256-colour
+SGR — none of which classic ANSI art uses.
+
+#### Deferred wrap is the one that breaks pictures
+
+Writing the 80th character must **not** move to the next line. The cursor parks
+on column 79 with a wrap *pending*, and the break only happens if another
+printable character actually arrives. Wrapping eagerly puts a blank row after
+every full line, so art drawn exactly 80 columns wide comes out double-spaced
+and twice the height. It is the single most common way ANSI renders wrong, and
+this terminal got it wrong until the test pattern above caught it.
+
+#### Testing a renderer with no BBS to connect to
+
+`/A` needs no modem, no line and no timing: the renderer is a pure function from
+a byte stream to a screen, so feeding it a known stream and dumping the result
+with `/V` tests exactly the code in question. The dump's own first version
+mapped everything outside plain ASCII to a space and duly reported the
+box-drawing and shading rows as **blank** — the tool filtering away the one
+thing it existed to check. High bytes now show as `#`, so their presence and
+position are visible even in a captured text file.
+
 ### Two bugs the screen found that no counter would have
 
 **The status line was being scrolled away.** It lives on the last row, but the
