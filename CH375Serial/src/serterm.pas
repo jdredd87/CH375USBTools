@@ -38,10 +38,9 @@ program serterm;
   bridge would report an empty log and look like a program that did not
   start.
 
-  MONO IS PROBED, NOT ASSUMED.  The video card in the machine this was
-  written for boots to mono on some power cycles and colour on others,
-  with no configuration change, so the segment and the attributes are
-  decided at run time from INT 10h AH=1Ah.  A terminal that hardcodes
+  MONO IS PROBED, NOT ASSUMED.  A video card can come up mono on one
+  power cycle and colour on the next with no configuration change, so the
+  segment and the attributes are decided at run time from INT 10h AH=1Ah.  A terminal that hardcodes
   B800 writes into nothing on those boots and looks hung.
 
   WHICH CONFIGURATION.  The reference adapter has two, and only the second
@@ -237,7 +236,7 @@ end;
 
   This was a Pascal loop over MemW[] and it was dropping serial data.
   Every MemW[] access reloads a far pointer -- BENCH measures about 58,640
-  of them a second on this machine -- and a scroll is 1920 reads plus 1920
+  of them a second on a period host -- and a scroll is 1920 reads plus 1920
   writes, so roughly 65 ms during which the program is not reading the USB
   port at all. At 9600 baud that is over sixty characters, more than a
   whole packet, and the symptom was lines overwriting each other because

@@ -37,7 +37,7 @@ program daprobe;
     3. RATE.  192 bytes every millisecond is 192,000 bytes/second, and it
        is a hard real-time deadline rather than an average -- a late frame
        is a dropout, not a delay.  The fastest this project has ever driven
-       a CH375 is 19,055 bytes/second, measured by DLBENCH on this machine.
+       a CH375 is 19,055 bytes/second, measured by DLBENCH on a period host.
        That is an order of magnitude short.
 
   Any ONE of those ends it.  So this project does what it can actually do,

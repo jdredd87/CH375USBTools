@@ -40,7 +40,7 @@ const
   AC_FEATURE    = $06;
 
   { The fastest this project has ever driven a CH375, measured by DLBENCH
-    on the 8086-class machine this collection is developed against.  It is
+    on the DOS machine this collection is developed against.  It is
     a real measurement rather than a datasheet figure, which is why it is
     worth quoting at people who want to stream audio. }
   CH375_BYTES_PER_SEC = 19055;

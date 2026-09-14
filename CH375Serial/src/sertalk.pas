@@ -26,7 +26,7 @@ program sertalk;
   collection avoids -- except that the device on the far end settles it
   for us.  A Hayes modem answers "AT" with "OK".  If OK comes back, then
   the control message was understood, the port was enabled, the baud rate
-  was close enough, both bulk pipes work, and the whole chain from an 8086
+  was close enough, both bulk pipes work, and the whole chain from the host
   through a CH375 through a USB adapter to a serial device is proven --
   regardless of whether every field offset is perfect.  If it does not
   come back, nothing here is proven and this file says so.
@@ -334,7 +334,7 @@ begin
     back shredded, and the reason is a number this project already knew.
 
     One character per USB packet means 960 packets/second at 9600 baud,
-    and 9600 is the SLOW setting. The CH375 on this machine manages a few
+    and 9600 is the SLOW setting. A CH375 on a slow host manages a few
     hundred packets/second: CH375Audio measured 131-138/s for 64-byte
     bulk transfers and DLBENCH puts the ceiling around 19 KB/s. So the
     adapter was producing packets several times faster than the host could
@@ -485,7 +485,7 @@ begin
     WriteLn('    /D=num   dial num, listen, then ALWAYS hang up');
     WriteLn('    /F=n     characters the adapter batches per USB packet,');
     WriteLn('             default 32. /F=1 is lowest latency and drops');
-    WriteLn('             data above a few hundred baud on this hardware');
+    WriteLn('             data above a few hundred baud on a slow host');
     WriteLn('    /W       sweep the usual baud rates looking for an answer');
     WriteLn('    /M       drive RTS/DTR and read CTS/DSR back, to find out');
     WriteLn('             whether the control lines are really looped');
@@ -726,7 +726,7 @@ begin
   WriteLn;
   if GotAny then
   begin
-    WriteLn('  SOMETHING CAME BACK. That is the whole chain proven: an 8086,');
+    WriteLn('  SOMETHING CAME BACK. That is the whole chain proven: the host,');
     WriteLn('  a CH375, a USB serial adapter, and a device on the far end.');
     Halt(0);
   end

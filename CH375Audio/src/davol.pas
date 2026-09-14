@@ -169,9 +169,9 @@ end;
 
 { 1/256 dB as a signed value, printed with one decimal.
 
-  Done in integers on purpose: this box has an 8087 but the tools in this
-  collection must run on machines that do not, and a volume readout is not
-  worth a floating-point dependency. }
+  Done in integers on purpose: a coprocessor cannot be assumed -- the tools
+  in this collection have to run on machines without one -- and a volume
+  readout is not worth a floating-point dependency. }
 function DbStr(Raw: Integer): ShortString;
 var
   Whole, Frac: Integer;

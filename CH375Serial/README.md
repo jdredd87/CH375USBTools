@@ -1,9 +1,9 @@
 # CH375Serial
 
-USB-to-serial adapters on an 8086-class DOS machine, through a CH375 USB host
+USB-to-serial adapters on a vintage DOS machine, through a CH375 USB host
 card.
 
-**Status: it works.** An 8086 running DOS talks to a USRobotics Courier
+**Status: it works.** A DOS machine talks to a USRobotics Courier
 V.Everything modem through a CH375 and a USB-to-serial adapter, at up to
 **38400 baud**, with `AT` commands and multi-line replies coming back cleanly.
 
@@ -25,8 +25,8 @@ opposite of a USB speaker on every count that mattered there:
 | rate | 192,000 B/s, hard 1 ms deadline | **11,520 B/s at 115200 baud** |
 | late data | an audible click | a byte that arrives late |
 
-Against ~19,000 bytes/second measured on this hardware, **the link is not the
-limit**. Both ends buffer, which is the property that decides everything on
+Against the ~19,000 bytes/second this collection has measured, **the link is not
+the limit**. Both ends buffer, which is the property that decides everything on
 this bus — see the rule in the collection's [top-level README](../README.md).
 
 ---
@@ -114,7 +114,7 @@ the baud rate all out of the picture — `AT` + CR comes straight back:
   RX  2: 00 0D  |..|
 ```
 
-So everything from the 8086, through the CH375, through USB, into the adapter
+So everything from the host, through the CH375, through USB, into the adapter
 and back is working.
 
 **And it caught a trap worth the whole exercise:** every bulk IN packet carries
@@ -127,7 +127,7 @@ recalled.
 
 ### It talks to a real modem
 
-A USRobotics Courier V.Everything, over the adapter, from the 8086:
+A USRobotics Courier V.Everything, over the adapter, from DOS:
 
 ```
   TX  5: 41 54 49 37 0D  |ATI7.|
@@ -141,7 +141,7 @@ A USRobotics Courier V.Everything, over the adapter, from the 8086:
   < OK
 ```
 
-That is the whole chain: an 8086, a CH375, USB, a Keyspan adapter, RS-232, and
+That is the whole chain: the host, a CH375, USB, a Keyspan adapter, RS-232, and
 a modem answering.
 
 ### Dialling: the modem works, the line does not
@@ -345,7 +345,7 @@ nothing, which is why it prints a DOS summary on the way out; otherwise a run
 over the bridge returns an empty log and looks like a program that never
 started.
 
-**Mono is probed, not assumed.** The video card in this machine boots to mono
+**Mono is probed, not assumed.** Some video cards boot to mono
 on some power cycles and colour on others with no configuration change, so the
 segment and the attributes are decided at run time from `INT 10h AH=1Ah`. A
 terminal that hardcodes `B800` writes into nothing on those boots and looks
@@ -421,7 +421,7 @@ where the text ends.
 
 **Scrolling was slow enough to drop serial data.** `ScrollUp` was a Pascal loop
 over `MemW[]`, and every `MemW[]` access reloads a far pointer — `BENCH`
-measures about 58,640 a second on this machine. A scroll is 1920 reads plus
+measures about 58,640 a second on a period host. A scroll is 1920 reads plus
 1920 writes, so roughly **65 ms during which the program is not reading the USB
 port at all**. At 9600 baud that is sixty-odd characters, more than a whole
 packet, and the lost bytes included line feeds — so the symptom was lines

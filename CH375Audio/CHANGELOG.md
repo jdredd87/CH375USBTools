@@ -33,7 +33,7 @@ source, and a worse one than the PC speaker already in the machine.
 objection was that EpOut waits for an acknowledgement that never comes, so the
 rate measures waiting rather than sending. /FAST issues the token and moves on:
 138 packets/s against 131 with the wait. No difference. The limit is the cost
-of pushing bytes through the CH375 on an 8086 -- 8,844 bytes/s against 192,000
+of pushing bytes through the CH375 -- 8,844 bytes/s against 192,000
 needed, 4.6%, and not improvable by better transfer handling.
 
 **A slower rate was asked for and refused.** SET_CUR of the endpoint's
@@ -136,7 +136,7 @@ revision or an unusual device gets tested instead of being talked out of it
 by a comment -- the same reason CH375Video keeps its FL2000 findings.
 
 **Verified against** a Jieli Technology `UACDemoV1.0` (`4C4A:4155`) on an
-NEC V30 with a CH375 rev B7 at I/O 260h. Volume written and read back at
+a CH375 rev B7 at I/O 260h. Volume written and read back at
 both ends of the device's range; mute set, read, toggled, read. The one
 path **not** observed is an actual button press -- the poll loop runs and
 the endpoint NAKs cleanly, but nobody has pressed a button while `DAKEYS`

@@ -1,6 +1,6 @@
 # CH375Audio
 
-USB audio devices on an 8086-class DOS machine, through a CH375 USB host card.
+USB audio devices on a vintage DOS machine, through a CH375 USB host card.
 
 **Playback is not possible, and this project says so with measurements rather
 than with a shrug** — including the measurement that proves bytes *do* reach
@@ -34,7 +34,7 @@ for* on hardware that cannot stream to it.
 | Playing audio | **impossible** — `DAISO` measures why |
 
 Tested against a Jieli Technology `UACDemoV1.0` (`4C4A:4155`), a common cheap
-USB speaker, on an NEC V30 at 8086 speeds with a CH375 rev B7 at I/O 260h.
+USB speaker, with a CH375 rev B7 at I/O 260h.
 
 ---
 
@@ -105,7 +105,7 @@ being carried, not merely rattling the device.
 *packet* cadence rather than the waveform we sent: the device wants 1000
 packets a second and gets 138, so it is starved 95% of the time and what you
 hear is it reacting to that. It is a controllable noise source — and a worse
-one than the PC speaker this machine already has, so it is a curiosity rather
+one than the PC speaker the machine already has, so it is a curiosity rather
 than a feature.
 
 `DAISO /HAMMER=secs` sends flat out for long enough to record; `/ZERO` sends
@@ -125,7 +125,7 @@ It isn't. `/FAST` issues the token and moves on without waiting at all:
 | **needed** | **1000** | **192,000** |
 
 Removing the wait entirely changed nothing, which means the limit is the cost
-of pushing bytes through the CH375's port interface on an 8086 — the same wall
+of pushing bytes through the CH375's port interface — the same wall
 `DLBENCH` measures at ~19 KB/s for larger transfers. **4.6% of what the stream
 needs**, and not improvable by being cleverer about transfers.
 
@@ -325,7 +325,7 @@ never reaches USB. On this unit, nothing moved.
 
 ### One thing worth knowing before buying a speaker to test with
 
-**This speaker will never make a sound on this machine**, and that is not a
+**A USB speaker will never make a sound on a host like this**, and that is not a
 limitation of these tools — its only input is USB, and USB audio cannot be
 streamed from a CH375. Controlling its volume works, and it is the volume of
 silence. Another USB speaker will behave the same way; the three walls are
