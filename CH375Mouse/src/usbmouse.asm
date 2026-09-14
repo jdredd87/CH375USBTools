@@ -147,21 +147,18 @@ ser_full: dw    0                ; drains that used the WHOLE budget, i.e.
 ser_reads: dw   0                ; successful reads, for a rate
 ser_over: dw    0                ; packets longer than the buffer
 
-; The last 40 bytes AS THEY ARRIVED, before the decoder groups them.  The
-; true cadence is only visible here: a log of assembled packets cannot show
-; it, because the decoder starts every packet on a header and so the
-; grouping is its own assumption reflected back.
-ser_hist: times 40 db 0
-ser_hi:   db    0                ; write position, 0..39
-
-; How big was each read?  A Keyspan asked to forward every byte should
-; answer with a status byte plus exactly one datum, over and over.  If it
-; does not -- if reads come back empty, or carrying several -- then the
-; cadence the decoder sees is not the cadence on the wire, and no amount of
-; work on the decoder will fix it.  Three counters settle which.
-ser_z:    dw    0                ; reads with no data at all
-ser_one:  dw    0                ; reads with exactly one data byte
-ser_many: dw    0                ; reads with two or more
+; DIAGNOSIS LIVES IN MOUPROBE, NOT IN HERE.
+;
+; Hunting the framing fault needed a log of the raw bytes before the decoder
+; grouped them, and a histogram of read sizes.  Both were invaluable and
+; neither belongs in a resident driver: the byte log wrote to memory for
+; every byte INSIDE THE TIMER INTERRUPT, on a machine where the cost of ISR
+; work had just been demonstrated by making DOS unusable.
+;
+; They are gone from here and MOUPROBE keeps them, which is where a
+; transient tool that can afford the time should have had them all along.
+; What stays below is per-packet or per-error, cheap, and answers the
+; questions a loaded driver gets asked.
 
 ; Bytes drained this tick, before any of them are decoded.
 ;
@@ -576,22 +573,6 @@ poll_got_ser:
         mov     cl, SER_BUFSZ
         inc     word [ser_over]
 poll_ser_fits:
-        ; Tally the shape of this read before anything consumes it.
-        push    cx
-        sub     cl, [ser_hdr]
-        jbe     short poll_sz_zero
-        cmp     cl, 1
-        je      short poll_sz_one
-        inc     word [ser_many]
-        jmp     short poll_sz_done
-poll_sz_one:
-        inc     word [ser_one]
-        jmp     short poll_sz_done
-poll_sz_zero:
-        inc     word [ser_z]
-poll_sz_done:
-        pop     cx
-
         call    ser_queue                ; stash it; decode after the drain
         inc     word [ser_reads]
         dec     byte [ser_bud]
@@ -749,19 +730,6 @@ cb_out:
 ser_feed:
         push    cx
         push    si
-
-        ; LOG THE BYTE BEFORE ANYTHING INTERPRETS IT.
-        push    bx
-        mov     bl, [ser_hi]
-        mov     bh, 0
-        mov     [bx + ser_hist], al
-        inc     bl
-        cmp     bl, 40
-        jb      short sf_logok
-        xor     bl, bl
-sf_logok:
-        mov     [ser_hi], bl
-        pop     bx
 
         cmp     byte [ser_n], 0
         jne     short sf_body
@@ -2083,33 +2051,7 @@ stat_serial:
 
         ; The last eight packets, raw.  Five bytes each: status, dx1, dy1,
         ; dx2, dy2.
-        mov     dx, msg_s_sz
-        call    puts
-        mov     ax, [es:ser_z]
-        call    putdecw
-        mov     dx, msg_s_sz1
-        call    puts
-        mov     ax, [es:ser_one]
-        call    putdecw
-        mov     dx, msg_s_szn
-        call    puts
-        mov     ax, [es:ser_many]
-        call    putdecw
-        call    crlf
 
-        mov     dx, msg_s_hist
-        call    puts
-        xor     si, si
-sh_byte:
-        mov     bx, si
-        mov     al, [es:bx + ser_hist]
-        call    puthex
-        mov     al, ' '
-        call    putc
-        inc     si
-        cmp     si, 40
-        jb      short sh_byte
-        call    crlf
         cmp     byte [es:ps2_on], 0
         je      short stat_nops2
         mov     dx, msg_s_ps2
@@ -3537,10 +3479,6 @@ msg_s_sread:   db '  serial reads=$'
 msg_s_spkt:    db '  packets=$'
 msg_s_slost:   db '  bytes resynced past=$'
 msg_s_sfull:   db '  BACKLOG (drains that ran out of budget)=$'
-msg_s_sz:      db '  reads: empty=$'
-msg_s_sz1:     db '  one byte=$'
-msg_s_szn:     db '  several=$'
-msg_s_hist:    db '  last 40 bytes as received: $'
 msg_ps2:       db 'PS/2 BIOS mouse interface installed (INT 15h/11h/74h).', 13, 10, '$'
 msg_s_ps2:     db '  PS/2 interface: enabled=$'
 msg_s_ps2h:    db '  handler=$'

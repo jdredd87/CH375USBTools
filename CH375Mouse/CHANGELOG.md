@@ -5,6 +5,52 @@ CH375Mouse -- StevenC -- https://github.com/jdredd87/CH375USBTools
 The version lives in `ver_str` in `src/usbmouse.asm` and nowhere else. A
 release is: bump it, add an entry here, `build.cmd`, commit, `git tag -a`.
 
+## 1.1.0 -- a serial mouse on a USB-to-serial adapter
+
+`USBMOUSE.COM` now drives two kinds of mouse through the same `INT 33h`: a
+USB HID mouse plugged into the CH375, and a **serial mouse on a
+USB-to-serial adapter** plugged into the CH375. It works out which is
+attached. Everything above the input layer -- `INT 33h`, the cursor, the
+event handlers, the PS/2 emulation -- is untouched and shared, because
+`apply_report` takes three bytes and a serial packet decodes into exactly
+those.
+
+Verified on a Keyspan `06CD:0121` with a Mouse Systems mouse: `MOUSETST`
+34/34, `EVTEST` clean, `PS2TEST` 25/25 with 160 real packets through the
+PS/2 BIOS path, so **Windows 3.0 works** with `/W`.
+
+**The framing is decided from the stream, not assumed.** After three bytes
+the decoder looks at the fourth: a header means the packet was three bytes
+(MM Series) and that byte starts the next one; anything else means it is
+`dx2` and the packet is five (Mouse Systems). Being wrong costs one packet
+and corrects itself.
+
+**Both movement samples are delivered, not summed.** A Mouse Systems packet
+holds two successive samples; adding them halves the cursor update rate,
+which is what "not very smooth" feels like. It also removes an overflow --
++100 and +100 summed in a byte is -56, so a fast flick used to reverse.
+
+**`SET_RETRY 00` on the serial path, and this one made the machine
+unusable.** The serial bring-up returns before the shared tail where the
+chip is put back to reporting NAKs, so it stayed on `8F` -- retry NAKs for
+ever -- and every poll of an idle endpoint ran to a full timeout, up to
+sixteen times per tick at 145 Hz. DOS crawled and the box needed a reboot.
+`DIR C:\BP\BIN` now takes 3.6s against 3.5s with no driver at all.
+
+This is the fourth time this bug has appeared across these projects, always
+from the same cause: a new code path that returns before the shared tail.
+
+**`CHECK_EXIST` resets the chip and asks again** before deciding there is no
+card. A chip left mid-transaction fails that test on a card that is fitted,
+and this driver's own `/U` can leave it that way -- so load, unload, load
+reported "No CH375 responds at that I/O address".
+
+Three smaller faults, all real and none of them the one above: an 8-bit
+overflow summing movement; reads into an 8-byte HID buffer when a bulk IN
+carries up to 64; and trusting `ch_read`'s count, which reports what the
+CHIP said rather than what it stored, so the decoder walked past the buffer
+and consumed driver variables as movement.
+
 ## Unreleased
 
 No code change. Two findings from the sibling projects were checked against
