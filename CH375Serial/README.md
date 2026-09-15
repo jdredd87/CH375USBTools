@@ -193,13 +193,26 @@ packets a second: about 2,976 B/s, which is just under 38400 baud's 3,840
 and is exactly where the loss starts. Raw throughput is not the limit --
 this CH375 does ~19,000 B/s, comfortably above 115200's 11,520.
 
-**What is NOT yet established is whose loss it is.** `SERTERM` parses ANSI
-and writes the screen for every byte, so a drain that falls behind its own
-rendering would look identical from here. The test that separates them is a
-byte-exact echo at 38400 through `SERTALK`, which does no rendering at all:
-if that is exact, the terminal is the bottleneck and not the adapter. Until
-someone runs it, "the FTDI loses bytes above 19200" is the wrong sentence --
-the right one is "SERTERM on the FTDI does".
+**Whose loss is it? Both, at different rates** -- and running the control is
+what separated them. `SERTALK` fetches the same `ATI4` dump and does no ANSI
+parsing and no screen writing at all, so where the two disagree, the
+terminal is the bottleneck:
+
+| baud | `SERTALK` (no rendering) | `SERTERM` (ANSI + screen) |
+|---|---|---|
+| 9600 | complete | complete |
+| 38400 | **complete** -- `S72=125 S73=121`, `LAST DIALED #:`, `OK` | 844 / 816, truncated |
+| 115200 | **truncated** -- `S72` and `LAST DIALED` never arrive | 454, truncated |
+
+So at **38400 the adapter is fine and `SERTERM` is what cannot keep up** --
+it is the per-byte ANSI work, not the USB path. At **115200 the loss is in
+the adapter path itself**, since it survives with all rendering removed.
+
+That matters for anyone building on `dser`: 38400 is available to a program
+that does not paint a screen for every byte, and the terminal's own ceiling
+is a property of the terminal. "The FTDI loses bytes above 19200" would have
+been the wrong sentence, and it is the one this file would have carried if
+the control had not been run.
 
 The packet counts differ because the two parts batch differently -- the same
 58 characters arrive in three packets on one and seven on the other -- which
