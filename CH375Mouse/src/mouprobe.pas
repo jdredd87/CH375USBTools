@@ -314,8 +314,14 @@ begin
   WriteLn('  ', SLen, ' byte(s) arrived while you were moving it.');
   if SLen = 0 then
   begin
-    WriteLn('  Nothing at all.  Either this framing is wrong, or the mouse');
-    WriteLn('  is not powered -- see the note about RTS and DTR above.');
+    WriteLn('  Nothing at all.  Check these IN ORDER, cheapest first:');
+    WriteLn('    1. IS THE MOUSE ACTUALLY MOVING?  A serial mouse sends');
+    WriteLn('       nothing at all when it is still, so a hand that missed');
+    WriteLn('       the window, or a jiggler that has stopped or drifted,');
+    WriteLn('       looks EXACTLY like dead hardware from here.');
+    WriteLn('    2. Is the mouse plugged into the adapter?');
+    WriteLn('    3. Only then doubt the framing, or whether this adapter');
+    WriteLn('       really asserts RTS and DTR -- which is what powers it.');
     SerClose(Dev);
     Exit;
   end;
@@ -549,8 +555,15 @@ begin
   end;
 
   WriteLn('  No protocol fitted.  The port opened and the lines were');
-  WriteLn('  raised, so if nothing arrived at all the next thing to doubt');
-  WriteLn('  is whether this adapter really asserts RTS and DTR -- which');
-  WriteLn('  is what powers the mouse.');
+  WriteLn('  raised, so the adapter did its part.');
+  WriteLn;
+  WriteLn('  Doubt the boring things first.  A serial mouse is silent');
+  WriteLn('  unless it MOVES, so "no bytes" is what a still mouse looks');
+  WriteLn('  like, and it is indistinguishable from dead hardware here.');
+  WriteLn('  Confirm it moved during the window, and that it is plugged');
+  WriteLn('  into the adapter, BEFORE doubting RTS and DTR.  That order');
+  WriteLn('  is written down because an evening went the other way: this');
+  WriteLn('  message named RTS and DTR first, and the real cause was a');
+  WriteLn('  close/open sequence wedging a PL2303.');
   Halt(7);
 end.
