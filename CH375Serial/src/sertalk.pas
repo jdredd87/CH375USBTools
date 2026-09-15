@@ -1,18 +1,26 @@
 program sertalk;
-{ SERTALK -- open a Keyspan USB-to-serial port, send a string, and print what
+{ SERTALK -- open a USB-to-serial port, send a string, and print what
   comes back.
   CH375Serial, StevenC.  Public domain (the Unlicense).
 
-    SERTALK [/P=260] [/C=1] [/B=9600] [/S=secs] [/A=text] [/R] [/X] [/T]
+    SERTALK [/P=260] [/C=n] [/B=9600] [/S=secs] [/A=text] [/R] [/X] [/T]
 
       /P=hex   I/O base, default 260
-      /C=dec   configuration INDEX, default 1 (the bulk one)
+      /C=dec   configuration INDEX.  Default: try each until one yields a
+               serial adapter this project can drive
       /B=dec   baud rate, default 9600
       /A=text  send this, followed by CR. Default "AT"
       /S=dec   seconds to listen after sending, default 4
       /R       raw: do not send anything, just listen
       /X       also dump the status pipe
       /T       trace every control-transfer stage
+
+  IT WORKS ON ANY FAMILY dser CAN DRIVE.  The Keyspan arm below is kept
+  because it builds the usa90 control message by hand and prints it field
+  by field, which is the whole reason this tool exists and which SerOpen
+  deliberately hides; every other family goes through SerOpen.  Verified
+  against a modem on a Keyspan (06CD:0121) and an FTDI (0403:6001), the
+  latter at 9600, 19200, 38400 and 115200.
 
   WHAT THIS IS AND IS NOT
 
