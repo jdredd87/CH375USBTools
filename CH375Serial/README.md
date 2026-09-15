@@ -37,9 +37,10 @@ this bus — see the rule in the collection's [top-level README](../README.md).
 |---|---|---|
 | **Keyspan (InnoSys)** `06CD:0121` | flat 34-byte block on its own bulk endpoint | **yes** — see below |
 | **FTDI** `0403:6001` | four vendor requests on endpoint 0 | **yes** — see below |
+| **Prolific PL2303** | vendor magic, then the CDC line requests | **yes** — `AT`/`OK` at four rates, byte-exact echo, full `ATI4` dump |
 | CDC-ACM | `SET_LINE_CODING`, the standard | written, no hardware yet |
 | CP210x | vendor requests | written, no hardware yet |
-| PL2303, CH340/CH341 | — | recognised, not driven |
+| CH340/CH341 | — | recognised, not driven |
 
 "Written" and "verified" are kept apart on purpose. `SerSupported` says
 which the unit will *attempt*, and a family it merely recognises returns
@@ -64,18 +65,53 @@ Keyspan never did:
   3 on the other. Copying one into the other gives a port that opens
   cleanly and reads garbage.
 
-#### Both families, the same battery
+#### The PL2303, and what it cost to add
+
+Almost nothing, because **its line settings are the CDC ones** --
+`SET_LINE_CODING` and `SET_CONTROL_LINE_STATE`, the same seven bytes in the
+same order. The only genuinely new code is a vendor initialisation sequence
+that has to run first.
+
+That sequence is *magic* in the precise sense: a fixed list of vendor reads
+and writes taken from the Linux driver, most of whose values have no
+published meaning, and whose reads have their answers **thrown away**. It
+looks pointless and is not -- the part will not configure without them.
+Nothing in it is reasoned; it is transcribed, and the only thing that makes
+it trustworthy is that the modem answers afterwards.
+
+One thing it does need deciding rather than copying: the final vendor write
+is `44h` on the HX family and `24h` on older silicon, and `bcdDevice` is how
+the Linux driver tells them apart. Sending the wrong one does not fail --
+it configures a chip that then will not pass data, which is the least
+helpful way to be wrong.
+
+**It costs about ten times the USB transactions of the other two.** The same
+58-character echo arrives in 3 packets on the Keyspan, 7 on the FTDI and
+**41** on the PL2303; the `ATI4` dump takes 35, 72 and **627**. The reason
+is that this part has no receive-batching control: the Keyspan takes
+`RXFWDLEN`, the FTDI has a latency timer, and the PL2303's CDC-style line
+coding has no equivalent at all, so `SerBatchFor` has nothing to set and the
+adapter forwards on its own schedule -- one or two bytes at a time.
+
+That matters here more than it would anywhere else. This CH375 sustains
+roughly 110-138 USB packets per second, which is the ceiling that decided
+CH375Audio and caps CH375Video's frame rate; 627 packets for one modem dump
+is most of a second spent on framing rather than data. It is byte-exact at
+every rate tested, so this is a note about headroom, not correctness -- but
+a PL2303 is the wrong adapter to pick for sustained throughput on this card.
+
+#### All three families, the same battery
 
 Which is the point of there being a shared interface at all: if one family
 passes a test the other cannot, the interface is not doing its job.
 
-| test | Keyspan | FTDI |
-|---|---|---|
-| `AT` -> `OK` | 9600, 19200, 38400, 115200 | 9600, 19200, 38400, 115200 |
-| 58-character echo | **byte-exact**, 3 packets | **byte-exact**, 7 packets |
-| `ATI4` configuration dump | 35 packets | 72 packets |
-| configuration found with no `/C=` | yes, index 1 of 2 | yes, index 0 of 1 |
-| ANSI terminal, dial-out | yes | not exercised |
+| test | Keyspan | FTDI | PL2303 |
+|---|---|---|---|
+| `AT` -> `OK` | 9600-115200 | 9600-115200 | 9600-115200 |
+| 58-character echo | **exact**, 3 pkts | **exact**, 7 pkts | **exact**, 41 pkts |
+| `ATI4` dump | 35 pkts | 72 pkts | 627 pkts |
+| config found with no `/C=` | yes, 1 of 2 | yes, 0 of 1 | yes, 0 of 1 |
+| ANSI terminal, dial-out | yes | not exercised | not exercised |
 
 The packet counts differ because the two parts batch differently -- the same
 58 characters arrive in three packets on one and seven on the other -- which

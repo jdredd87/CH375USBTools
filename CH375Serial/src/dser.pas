@@ -188,7 +188,7 @@ end;
 
 function SerSupported(F: TSerFamily): Boolean;
 begin
-  SerSupported := F in [sfCdcAcm, sfFtdi, sfCp210x, sfKeyspan];
+  SerSupported := F in [sfCdcAcm, sfFtdi, sfPl2303, sfCp210x, sfKeyspan];
 end;
 
 { Identification is by VENDOR ID first and class second, and that order is
@@ -501,6 +501,84 @@ end;
 {  Silicon Labs CP210x.                                             }
 { ---------------------------------------------------------------- }
 
+{ ---------------------------------------------------------------- }
+{  Prolific PL2303.                                                 }
+{                                                                   }
+{  Its LINE SETTINGS are the CDC ones -- SET_LINE_CODING and         }
+{  SET_CONTROL_LINE_STATE, the same seven bytes in the same order    }
+{  -- so the only genuinely new thing is a vendor initialisation     }
+{  sequence that has to run first.                                   }
+{                                                                   }
+{  That sequence is MAGIC in the precise sense: it is a fixed list   }
+{  of vendor reads and writes taken from the Linux pl2303 driver,    }
+{  most of whose values have no published meaning.  The reads have   }
+{  their answers thrown away, which looks pointless and is not --    }
+{  the part will not configure without them.  Nothing here is        }
+{  reasoned; it is transcribed, and the only thing that makes it     }
+{  trustworthy is that the device answers afterwards.                }
+{ ---------------------------------------------------------------- }
+
+function Pl2303Wr(Val, Idx: Word): Boolean;
+begin
+  Pl2303Wr := CtrlNoData($40, $01, Val, Idx) = INT_SUCCESS;
+end;
+
+function Pl2303Rd(Val: Word): Boolean;
+var
+  B  : array[0..3] of Byte;
+  Got: Word;
+begin
+  Pl2303Rd := CtrlIn($C0, $01, Val, 0, 1, B, SizeOf(B), Got) = INT_SUCCESS;
+end;
+
+function Pl2303Open(var D: TSerDev; Baud: LongInt;
+                    Bits, Par, Stop, Enable: Byte): Boolean;
+var
+  B   : array[0..7] of Byte;
+  Last: Word;
+  R   : Integer;
+begin
+  Pl2303Open := False;
+
+  { The initialisation, in this order.  A read whose answer is discarded is
+    still a step. }
+  Pl2303Rd($8484);
+  Pl2303Wr($0404, 0);
+  Pl2303Rd($8484);
+  Pl2303Rd($8383);
+  Pl2303Rd($8484);
+  Pl2303Wr($0404, 1);
+  Pl2303Rd($8484);
+  Pl2303Rd($8383);
+  Pl2303Wr(0, 1);
+  Pl2303Wr(1, 0);
+
+  { The last write differs by silicon generation, and bcdDevice is how the
+    Linux driver tells them apart: 0300 and above are the HX family and want
+    44h, the older parts want 24h.  Sending the wrong one does not fail --
+    it configures a chip that then will not pass data, which is the least
+    helpful way to be wrong. }
+  Last := DevDesc[12] or (Word(DevDesc[13]) shl 8);
+  if Last >= $0300 then Pl2303Wr(2, $44) else Pl2303Wr(2, $24);
+
+  { From here it is CDC, byte for byte. }
+  B[0] := Byte(Baud and $FF);
+  B[1] := Byte((Baud shr 8) and $FF);
+  B[2] := Byte((Baud shr 16) and $FF);
+  B[3] := Byte((Baud shr 24) and $FF);
+  if Stop >= 2 then B[4] := 2 else B[4] := 0;
+  B[5] := Par;
+  B[6] := Bits;
+  R := CtrlOut($21, CDC_SET_LINE_CODING, 0, 0, B, 7);
+  if R <> INT_SUCCESS then Exit;
+
+  if Enable <> 0 then
+    R := CtrlNoData($21, CDC_SET_CTRL_LINE, $0003, 0)
+  else
+    R := CtrlNoData($21, CDC_SET_CTRL_LINE, $0000, 0);
+  Pl2303Open := R = INT_SUCCESS;
+end;
+
 function Cp210xOpen(var D: TSerDev; Baud: LongInt;
                     Bits, Par, Stop, Enable: Byte): Boolean;
 var
@@ -541,6 +619,7 @@ begin
     sfKeyspan: Ok := KeyspanOpen(D, Baud, Bits, Par, Stop, RxBatch, 1);
     sfCdcAcm:  Ok := CdcOpen(D, Baud, Bits, Par, Stop, 1);
     sfFtdi:    Ok := FtdiOpen(D, Baud, Bits, Par, Stop, 1);
+    sfPl2303:  Ok := Pl2303Open(D, Baud, Bits, Par, Stop, 1);
     sfCp210x:  Ok := Cp210xOpen(D, Baud, Bits, Par, Stop, 1);
   else
     Ok := False;
@@ -559,6 +638,7 @@ begin
     sfKeyspan: KeyspanOpen(D, 9600, 8, 0, 1, 16, 0);
     sfCdcAcm:  CdcOpen(D, 9600, 8, 0, 1, 0);
     sfFtdi:    FtdiOpen(D, 9600, 8, 0, 1, 0);
+    sfPl2303:  Pl2303Open(D, 9600, 8, 0, 1, 0);
     sfCp210x:  Cp210xOpen(D, 9600, 8, 0, 1, 0);
   end;
   D.Opened := False;
