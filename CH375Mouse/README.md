@@ -196,10 +196,37 @@ Ruled out rather than assumed, both by reading the code:
   projects. All three families call `ser_poll_ready` on their success path,
   and the bring-up calls it again afterwards as the belt to that braces.
 
+**Then the adapter vanished from the bus, and that may be the answer.**
+After the lock-up the box was power-cycled twice. It boots perfectly --
+packet driver, agent, network -- and the CH375 itself is fine: `CHECK_EXIST`
+returns `AA` and the IC version reads `B7`. But `TEST_CONNECT` returns `16`,
+device disconnected, and `USBMOUSE`'s full bring-up finds nothing either. The
+device is electrically absent.
+
+That is a better theory than livelock: **the Keyspan fell off the bus during
+the job, and the driver hung handling the disconnect** rather than starving
+the machine. It explains the timing -- a suite that passed once and hung on
+an identical second run -- far more naturally than a load threshold does.
+
+It cannot be attributed cleanly, and saying so matters more than having an
+answer. Two hard power cuts happened between the hang and the diagnosis, and
+either could have dropped the adapter by itself. So the absence is evidence
+that a disconnect is PLAUSIBLE, not proof that one caused the hang.
+
+What settles it, once the adapter is back on the bus: with the driver
+resident and polling, **unplug the adapter** and see whether the box
+survives. A driver that wedges on a disconnect is a real bug regardless of
+whether it caused this one, and `poll_hotplug` is the path that has to
+handle it.
+
 The experiment, in order, and each step is one job so a hang names itself:
 
+0. With the adapter back: driver resident, then **pull the adapter** while it
+   polls. This is now the first test, because it is the cheapest and the
+   most likely.
 1. `/U`, then `/W`, then `TICKCHK` -- does the BIOS clock keep time with the
-   driver resident and a mouse moving?
+   driver resident and a mouse moving? (Baseline with NO driver is already
+   measured: `INT 08h` and `INT 1Ch` both 18 Hz, normal.)
 2. `PS2TEST`, then `TICKCHK` again, as a SEPARATE job. If the clock kept time
    in step 1 and has stopped now, the first hypothesis is confirmed and the
    fault is in the suspend/resume path, not in the serial code at all.
