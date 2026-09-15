@@ -227,18 +227,25 @@ button does not switch this mouse.**
 
 What the evidence does support is that the protocol is settled **at
 power-up**, and that opening the port IS a power cycle -- `SerOpen` raises
-RTS and DTR, which is where the mouse gets its power. So every program that
-opens the port gets its own answer, and they disagree:
+RTS and DTR, which is where the mouse gets its power. So every open is a
+fresh roll, and the answer is not stable:
 
-| who opened it | this adapter | protocol |
+| who opened it | adapter | protocol |
 |---|---|---|
 | `MOUPROBE` | Keyspan | Mouse Systems |
-| `USBMOUSE` | Keyspan | Microsoft |
+| `USBMOUSE` | Keyspan | **Microsoft** |
+| `USBMOUSE` | Keyspan, minutes later | **Mouse Systems** |
 | `USBMOUSE` | PL2303 | Mouse Systems |
 
-Something in how the lines are brought up differs between the two programs
-and between the two adapters, and that is as far as the evidence goes. The
-honest version is: **unknown**.
+The second theory was that the two programs bring the lines up differently.
+Rows three and four killed that too: the SAME program on the SAME adapter
+got both answers, minutes apart, with nothing changed. It is not the
+program, and it is not the adapter.
+
+The honest version is: **unknown**, and possibly timing-dependent in a way
+nothing here controls. That is written down rather than replaced with a
+third theory, because the first two were each convincing and each survived
+about a day.
 
 **Which is why the driver decides from the stream and decides again.** Not
 knowing the mechanism is exactly the case for not depending on it. A driver

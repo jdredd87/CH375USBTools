@@ -2229,6 +2229,12 @@ stat_have:
 stat_serial:
         mov     dx, msg_s_proto
         call    puts
+        ; NOTHING HAS SPOKEN YET is a different answer from either protocol,
+        ; and printing a default here is the same guess-as-fact the install
+        ; banner used to make.  ser_undef says the stream has not settled it.
+        mov     dx, msg_p_none
+        cmp     byte [es:ser_undef], 0
+        jne     short st_psay
         mov     dx, msg_p_sys
         cmp     byte [es:ser_proto], SP_MICROSOFT
         jne     short st_psay
@@ -4266,6 +4272,7 @@ msg_s_rate:    db '  timer divisor=$'
 msg_s_btn:     db '  buttons seen=$'
 msg_s_brep:    db '  button reports=$'
 msg_s_proto:   db '  protocol seen=$'
+msg_p_none:    db 'not settled -- no data has arrived yet$'
 msg_s_redec:   db '  protocol decided again=$'
 msg_s_sread:   db '  serial reads=$'
 msg_s_spkt:    db '  packets=$'
