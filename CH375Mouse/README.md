@@ -32,7 +32,7 @@ DTR raised and decodes serial mouse packets instead of HID reports.
 
 | adapter | mouse | verified |
 |---|---|---|
-| Keyspan `06CD:0121` | Mouse Systems, 1200 8N1, 5 bytes, 3 buttons | `MOUSETST` 34/34, `PS2TEST` 25/25 |
+| Keyspan `06CD:0121` | Mouse Systems, 1200 8N1, 5 bytes, 3 buttons | `MOUSETST` 34/34, `PS2TEST` 25/25 -- but **before** the protocol sniff was added; see below |
 | FTDI FT232 `0403:6001` | Microsoft, 1200 7N1, 3 bytes, 2 buttons | `MOUSETST` 34/34, 255 reports, 0 resyncs |
 
 **The driver works out both, and they are decided at different moments.**
@@ -74,6 +74,26 @@ therefore a complete stopping rule on one part and an infinite loop's worth
 of wasted USB transactions on the other -- four per tick at 145 Hz, in the
 timer interrupt, for an idle mouse. The drain stops on a read that contained
 no DATA, which is right for both.
+
+### Known untested: Mouse Systems on the Keyspan, since the sniff changed
+
+The Keyspan/Mouse-Systems combination in the table above was verified when
+the driver opened **straight at 8N1**. It does not any more. Meeting a
+Microsoft mouse on the FTDI made the bring-up open at **7N1 first**, listen
+about a second for the `'M'` a Microsoft mouse sends, and fall back to 8N1
+only on silence.
+
+That fallback is new logic sitting directly in front of the path that used
+to work, and it was written and tested against a Microsoft mouse on a
+different adapter. A Mouse Systems mouse says nothing at power-up, so it
+reaches the 8N1 path through the silence branch -- which is the branch no
+hardware has taken yet.
+
+It should work. "Should" is what this file has already spent hours on, so it
+is recorded as untested rather than carried forward as verified. It is a
+two-minute check with that mouse on that adapter: the bring-up banner should
+say **Mouse Systems, 1200 8N1, 5 bytes**, and `MOUSETST` should pass 34/34
+with `bytes resynced past` at or near zero.
 
 ### A wrong diagnosis, and how it was reached
 
