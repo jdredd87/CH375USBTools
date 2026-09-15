@@ -157,8 +157,49 @@ passes a test the other cannot, the interface is not doing its job.
 | 58-character echo | **exact**, 3 pkts | **exact**, 7 pkts | **exact**, 41 pkts |
 | `ATI4` dump | 35 pkts | 72 pkts | 627 pkts |
 | config found with no `/C=` | yes, 1 of 2 | yes, 0 of 1 | yes, 0 of 1 |
-| ANSI terminal (`SERTERM`) | yes | not exercised | **yes** -- rx 9, tx 3 |
+| ANSI terminal (`SERTERM`) | yes | **yes** -- full `ATI4` screen, rx 1057 | **yes** -- rx 9, tx 3 |
 | dial-out | yes | not exercised | not exercised |
+
+### SERTERM on the FTDI, and where it stops being byte-complete
+
+Run unattended -- no camera, no hands -- with the terminal printing its own
+finished screen through DOS:
+
+```
+SERTERM.EXE /I=ATI4 /S=14 /V
+```
+
+It rendered the whole Courier V.Everything settings page, every `Snn`
+register, ending in `OK`, with **1057 bytes received**.
+
+Then the same command at each rate, and this is the part worth keeping. The
+`ATI4` dump is a fixed ~1057 bytes, so anything less is loss:
+
+| baud | received |
+|---|---|
+| 9600 | **1057 -- complete** |
+| 19200 | **1057 -- complete** |
+| 38400 | 844, and 816 on a repeat |
+| 115200 | 454, twice |
+
+**That is loss, not a timeout cutting the dump short.** Doubling the window
+to `/S=20` changed nothing -- 816 and 454 again -- which is the check that
+distinguishes the two and the reason it was run.
+
+The shape says packets per second rather than bytes per second, which is the
+constraint this whole project keeps meeting. `SERTERM` reports batching 48
+characters per packet, and an FTDI's latency timer delivers roughly 62
+packets a second: about 2,976 B/s, which is just under 38400 baud's 3,840
+and is exactly where the loss starts. Raw throughput is not the limit --
+this CH375 does ~19,000 B/s, comfortably above 115200's 11,520.
+
+**What is NOT yet established is whose loss it is.** `SERTERM` parses ANSI
+and writes the screen for every byte, so a drain that falls behind its own
+rendering would look identical from here. The test that separates them is a
+byte-exact echo at 38400 through `SERTALK`, which does no rendering at all:
+if that is exact, the terminal is the bottleneck and not the adapter. Until
+someone runs it, "the FTDI loses bytes above 19200" is the wrong sentence --
+the right one is "SERTERM on the FTDI does".
 
 The packet counts differ because the two parts batch differently -- the same
 58 characters arrive in three packets on one and seven on the other -- which
