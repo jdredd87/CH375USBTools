@@ -31,6 +31,59 @@ this bus — see the rule in the collection's [top-level README](../README.md).
 
 ---
 
+## Which adapters are proven
+
+| family | line setting | verified on hardware |
+|---|---|---|
+| **Keyspan (InnoSys)** `06CD:0121` | flat 34-byte block on its own bulk endpoint | **yes** — USR Courier at up to 38400, ANSI terminal, dial-out |
+| **FTDI** `0403:6001` | four vendor requests on endpoint 0 | **yes** — `AT`/`OK` at 9600, 19200, 38400 and 115200 |
+| CDC-ACM | `SET_LINE_CODING`, the standard | written, no hardware yet |
+| CP210x | vendor requests | written, no hardware yet |
+| PL2303, CH340/CH341 | — | recognised, not driven |
+
+"Written" and "verified" are kept apart on purpose. `SerSupported` says
+which the unit will *attempt*, and a family it merely recognises returns
+False from `SerOpen` rather than pretending — because a port that was never
+opened delivers nothing, and "no answer" is exactly what a wrong baud rate
+looks like.
+
+**The FTDI verification is worth more than one more row**, because it is the
+first family other than the reference part and it exercised things the
+Keyspan never did:
+
+* **Transmit.** `USBMOUSE` proved FTDI *reading* at 1200 first, but a mouse
+  never sends, so `SerSend` on this family was untested until the modem
+  answered.
+* **The fractional divisor.** FTDI holds 3,000,000/baud in eighths and
+  encodes the fraction into the top bits of `wIndex` through a lookup that
+  is not in numeric order. At 1200 and 9600 it comes out exact and none of
+  that machinery runs. 19200 and 38400 both carry a fraction, and both
+  answer.
+* **The LCR is not the Keyspan's.** FTDI wants the actual bit count in the
+  low bits, where the Keyspan wants the 16550 encoding — 8N1 is 8 on one and
+  3 on the other. Copying one into the other gives a port that opens
+  cleanly and reads garbage.
+
+### The tools find the configuration themselves now
+
+The default used to be configuration index 1, which is right for the Keyspan
+— it declares two and only the second carries a bulk pair, the first putting
+interrupt endpoints where the data should be — and wrong for every adapter
+with a single configuration. An FTDI has only index 0, so the default asked
+for one that does not exist and `SERTALK` and `SERTERM` failed before they
+reached the adapter they were pointed at.
+
+They now try each in turn and take the first that yields a drivable serial
+adapter. `/C=` still forces one, which is what it should have been all
+along: a thing to reach for when a device is unusual, not a thing you have
+to know in advance.
+
+`SERTALK` also no longer refuses anything but a Keyspan. It was written
+before `dser` existed, as the experiment that reconstructed the Keyspan
+control message, so it built that message itself and knew no other. The
+Keyspan arm stays — printing the message field by field is the whole reason
+the tool exists — and every other family goes through `SerOpen`.
+
 ## The reference adapter, and the trap it exposed
 
 The part this was written against is a **Keyspan USA-19H** (`06CD:0121`).

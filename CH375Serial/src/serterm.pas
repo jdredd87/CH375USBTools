@@ -84,6 +84,8 @@ var
 
   { settings }
   WantCfg : Integer;
+  CfgIdx  : Integer;
+  Found   : Boolean;
   Baud    : LongInt;
   Bits    : Byte;
   Par     : Byte;
@@ -955,7 +957,7 @@ begin
     Halt(0);
   end;
 
-  WantCfg := 1; Baud := 9600; Bits := 8; Par := 0; Stop := 1;
+  WantCfg := -1; Baud := 9600; Bits := 8; Par := 0; Stop := 1;
   Batch := 0; Echo := False; Quiet := False; DialNum := '';
   InitCmd := ''; RunSecs := 0; Repeats := 1; DumpScr := False;
   NoBlink := False; SelfTest := False;
@@ -994,7 +996,40 @@ begin
   WriteLn('I/O base ', Hex4(Base), 'h');
 
   ExitProc := @Quieten;
-  Rc := BringUpCfg(Byte(WantCfg), Big, BigLen, Why);
+{ FIND THE CONFIGURATION RATHER THAN ASSUMING ONE.
+
+  The default used to be index 1, which is right for the Keyspan on this
+  bench -- it declares two configurations and only the second carries a
+  bulk pair, its first putting interrupt endpoints where the data should be
+  -- and wrong for everything with a single configuration.  An FTDI has
+  only index 0, so the default asked for a configuration that does not
+  exist and the tool failed before it reached the adapter it was pointed at.
+
+  Trying each in turn and taking the first that yields a serial adapter
+  this project can drive costs one descriptor read per miss and makes the
+  switch a thing you reach for when a device is unusual, not a thing you
+  must know in advance. /C= still forces one. }
+  CfgIdx := WantCfg;
+  if CfgIdx < 0 then CfgIdx := 0;
+  Found := False;
+  while CfgIdx <= 3 do
+  begin
+    Rc := BringUpCfg(Byte(CfgIdx), Big, BigLen, Why);
+    if Rc = BU_OK then
+    begin
+      VID := DevDesc[8] or (Word(DevDesc[9]) shl 8);
+      PID := DevDesc[10] or (Word(DevDesc[11]) shl 8);
+      if SerDetect(Big, BigLen, VID, PID, Dev) then
+        if SerSupported(Dev.Family) and (Dev.EpIn <> 0) and (Dev.EpOut <> 0) then
+        begin
+          Found := True;
+          Break;
+        end;
+    end;
+    if WantCfg >= 0 then Break;
+    Inc(CfgIdx);
+  end;
+  if Found then Rc := BU_OK;
   if Rc <> BU_OK then
   begin
     WriteLn(BusUpReason(Rc));

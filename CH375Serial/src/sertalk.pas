@@ -120,6 +120,8 @@ var
   Dev     : TSerDev;
   VID, PID: Word;
   WantCfg : Integer;
+  CfgIdx  : Integer;
+  Found   : Boolean;
   Baud    : LongInt;
   Secs    : Integer;
   Send    : ShortString;
@@ -261,6 +263,7 @@ begin
   T0 := Ticks;
   while (not Done) and (Ticks - T0 < 36) do
   begin
+    if Dev.EpStatIn = 0 then Exit;     { no status pipe on this family }
     R := EpIn(Dev.EpStatIn, TogStat, Buf, SizeOf(Buf), Got);
     if (R = INT_SUCCESS) and (Got >= 14) then
     begin
@@ -298,6 +301,9 @@ begin
 end;
 
 { Build and send the port control message. }
+{ Open the port.  The Keyspan arm builds the usa90 message by hand because
+  this tool's whole purpose is to show it; every other family goes through
+  dser, which is the same code SERTERM and USBMOUSE use. }
 function OpenPort(BaudRate: LongInt; Rts, Dtr: Byte): Boolean;
 var
   M   : array[0..CTRLMSG_LEN - 1] of Byte;
@@ -305,6 +311,13 @@ var
   R   : Integer;
   K   : Integer;
 begin
+  { Everything except the Keyspan: dser knows the control path for it. }
+  if Dev.Family <> sfKeyspan then
+  begin
+    OpenPort := SerOpen(Dev, BaudRate, 8, 0, 1, SerBatchFor(BaudRate));
+    Exit;
+  end;
+
   for K := 0 to CTRLMSG_LEN - 1 do M[K] := 0;
 
   Div_ := KEYSPAN_BAUDCLK div (BaudRate * 16);
@@ -493,7 +506,7 @@ begin
     Halt(0);
   end;
 
-  WantCfg := 1; Baud := 9600; Secs := 4; Send := 'AT';
+  WantCfg := -1; Baud := 9600; Secs := 4; Send := 'AT';
   RawOnly := False; ShowStat := False; GotAny := False; Loop := False;
   Sweep := False; Lines := False; RawHex := False; FwdLen := 32;
   Dial := '';
@@ -528,7 +541,40 @@ begin
   WriteLn('I/O base ', Hex4(Base), 'h');
 
   ExitProc := @Quieten;
-  Rc := BringUpCfg(Byte(WantCfg), Big, BigLen, Why);
+{ FIND THE CONFIGURATION RATHER THAN ASSUMING ONE.
+
+  The default used to be index 1, which is right for the Keyspan on this
+  bench -- it declares two configurations and only the second carries a
+  bulk pair, its first putting interrupt endpoints where the data should be
+  -- and wrong for everything with a single configuration.  An FTDI has
+  only index 0, so the default asked for a configuration that does not
+  exist and the tool failed before it reached the adapter it was pointed at.
+
+  Trying each in turn and taking the first that yields a serial adapter
+  this project can drive costs one descriptor read per miss and makes the
+  switch a thing you reach for when a device is unusual, not a thing you
+  must know in advance. /C= still forces one. }
+  CfgIdx := WantCfg;
+  if CfgIdx < 0 then CfgIdx := 0;
+  Found := False;
+  while CfgIdx <= 3 do
+  begin
+    Rc := BringUpCfg(Byte(CfgIdx), Big, BigLen, Why);
+    if Rc = BU_OK then
+    begin
+      VID := DevDesc[8] or (Word(DevDesc[9]) shl 8);
+      PID := DevDesc[10] or (Word(DevDesc[11]) shl 8);
+      if SerDetect(Big, BigLen, VID, PID, Dev) then
+        if SerSupported(Dev.Family) and (Dev.EpIn <> 0) and (Dev.EpOut <> 0) then
+        begin
+          Found := True;
+          Break;
+        end;
+    end;
+    if WantCfg >= 0 then Break;
+    Inc(CfgIdx);
+  end;
+  if Found then Rc := BU_OK;
   if Rc <> BU_OK then
   begin
     WriteLn(BusUpReason(Rc));
@@ -546,15 +592,28 @@ begin
   end;
 
   Fld('device', Hex4(VID) + ':' + Hex4(PID) + '  ' + SerFamilyName(Dev.Family));
-  if Dev.Family <> sfKeyspan then
+  { THIS USED TO REFUSE ANYTHING BUT A KEYSPAN.
+
+    It was written before dser existed, as the experiment that
+    reconstructed the Keyspan control message, so it builds that message
+    itself and knew no other.  dser now drives several families behind one
+    interface, and a tool that says "AT" and listens for "OK" has nothing
+    Keyspan-specific about it at all.
+
+    So the Keyspan path stays -- it prints the message field by field and
+    dumps the status pipe, which is why this tool exists and which SerOpen
+    deliberately hides -- and everything else goes through SerOpen. }
+  if not SerSupported(Dev.Family) then
   begin
     WriteLn;
-    WriteLn('  This tool only knows the Keyspan control message. The');
-    WriteLn('  adapter attached is a ', SerFamilyName(Dev.Family), ', which');
-    WriteLn('  uses a different one, so opening its port is not attempted.');
+    WriteLn('  A ', SerFamilyName(Dev.Family), ' is recognised but dser has');
+    WriteLn('  no line-setting path for it, so opening its port is not');
+    WriteLn('  attempted.  Saying so beats pretending: a port that was');
+    WriteLn('  never opened delivers nothing, and "no answer" is exactly');
+    WriteLn('  what a wrong baud rate looks like.');
     Halt(6);
   end;
-  if Dev.EpCtrlOut = 0 then
+  if (Dev.Family = sfKeyspan) and (Dev.EpCtrlOut = 0) then
   begin
     WriteLn('  no separate control endpoint; this is not the usa90 shape.');
     Halt(6);
