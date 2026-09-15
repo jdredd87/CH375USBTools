@@ -786,20 +786,26 @@ ser_feed:
         ; there by the stop bit) and a Mouse Systems header as 80-87h.  The
         ; ranges do not overlap, so one header settles it.
         ;
-        ; IT IS DECIDED AGAIN WHEN THE DECODE FALLS APART, and that is not a
-        ; refinement -- THE MOUSE CHANGES PROTOCOL WHILE RUNNING.  This one
-        ; powers up as Microsoft and switches to Mouse Systems the moment
-        ; the MIDDLE BUTTON is pressed, which is the Logitech convention and
-        ; is how a two-button protocol carries a three-button mouse.  Two
-        ; probe runs a minute apart read the same mouse as each protocol,
-        ; and the giveaway was in the buttons: the run that saw a middle
-        ; click ended in Mouse Systems, the run that did not stayed
-        ; Microsoft.
+        ; IT IS DECIDED AGAIN WHEN THE DECODE FALLS APART.  THE SAME MOUSE
+        ; SPEAKS EITHER PROTOCOL at different times: this one has been read
+        ; as Mouse Systems by MOUPROBE and as Microsoft by this driver
+        ; minutes apart, on one adapter, without being unplugged.
         ;
-        ; So a driver that latches the protocol once works perfectly until
-        ; the user presses the middle button, and is then wrong for ever --
-        ; wrong framing, wrong button sense, wrong movement.  Deciding again
-        ; costs the eight bytes it takes to notice.
+        ; WHAT SELECTS IT IS NOT KNOWN.  The first theory was the middle
+        ; button -- the Logitech convention, and how a two-button protocol
+        ; carries a three-button mouse -- because the probe run that saw a
+        ; middle click ended in Mouse Systems and the run that did not
+        ; stayed Microsoft.  That was TESTED DIRECTLY and is wrong: pressing
+        ; only the middle button, repeatedly, through 1840 decoded packets,
+        ; changed nothing at all.  The protocol is settled at power-up, and
+        ; a port open is a power cycle, so every program that opens the port
+        ; gets its own answer.
+        ;
+        ; Either way a driver that latches the protocol once is betting on
+        ; that answer never changing under it, and if it loses it is wrong
+        ; for ever -- wrong framing, wrong button sense, wrong movement.
+        ; Deciding again costs the eight bytes it takes to notice, and does
+        ; not depend on knowing the mechanism.
         ;
         ; Re-deciding needs a trigger that a healthy stream cannot pull.
         ; ser_bad counts bytes thrown away WITH NO REPORT BETWEEN THEM and
@@ -4260,7 +4266,7 @@ msg_s_rate:    db '  timer divisor=$'
 msg_s_btn:     db '  buttons seen=$'
 msg_s_brep:    db '  button reports=$'
 msg_s_proto:   db '  protocol seen=$'
-msg_s_redec:   db '  protocol decided again (middle button switches this mouse)=$'
+msg_s_redec:   db '  protocol decided again=$'
 msg_s_sread:   db '  serial reads=$'
 msg_s_spkt:    db '  packets=$'
 msg_s_slost:   db '  bytes resynced past=$'

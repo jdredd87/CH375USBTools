@@ -53,21 +53,33 @@ and consumed driver variables as movement.
 
 ## Unreleased
 
-**THE MOUSE CHANGES PROTOCOL WHILE IT IS RUNNING.** This is the finding that
-matters, and nothing in the project expected it. The mouse on the bench
-powers up speaking Microsoft and switches to Mouse Systems **the moment the
-middle button is pressed** -- the Logitech convention, and how a two-button
-protocol carries a three-button mouse.
+**THE SAME MOUSE SPEAKS EITHER PROTOCOL.** The mouse on the bench has been
+read as Mouse Systems by `MOUPROBE` and as Microsoft by this driver, minutes
+apart, on one adapter, without being unplugged. Both readings are correct --
+the byte streams are unambiguous.
 
 It was found by accident and read as a bug at first: two `MOUPROBE` runs a
-minute apart identified the same mouse, on the same adapter, as different
-protocols. The giveaway was in the buttons rather than the bytes. The run
-that reported `left right middle` ended in Mouse Systems; the run that
-reported only `left right` stayed Microsoft. The probe was right both times.
+minute apart identified the same mouse as different protocols.
 
-So a driver that decides the protocol once is correct until somebody presses
-the middle button, and wrong for ever after -- wrong framing, wrong button
-sense, wrong movement, and no way back short of reloading it.
+**What selects it is NOT known, and the first answer was wrong.** The middle
+button fitted the early evidence exactly -- the run that reported `left right
+middle` ended in Mouse Systems, the run that reported only `left right`
+stayed Microsoft, and the Logitech convention is that a mouse switches
+protocol to report a third button. It was written up as established, then
+tested directly: with the driver resident and the mouse in Microsoft mode,
+pressing only the middle button repeatedly changed nothing through **1840
+decoded packets**, with resyncs unchanged and the protocol unmoved.
+
+What the evidence supports is that the protocol is settled at power-up, and
+that opening the port IS a power cycle, since `SerOpen` raises the RTS and
+DTR that power the mouse. So every program that opens the port gets its own
+answer, and they disagree -- `MOUPROBE` and `USBMOUSE` on one Keyspan, and
+`USBMOUSE` differently again on a PL2303.
+
+So a driver that decides the protocol once is betting that answer never
+changes under it, and the cost of losing is total -- wrong framing, wrong
+button sense, wrong movement, until it is reloaded. Not knowing the mechanism
+is the case FOR not depending on it.
 
 **The driver now decides again when the decode falls apart.** The trigger has
 to be one a healthy stream cannot pull, so it is not "a byte looked odd":

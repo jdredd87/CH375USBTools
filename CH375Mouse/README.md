@@ -38,7 +38,8 @@ DTR raised and decodes serial mouse packets instead of HID reports.
 
 Every one of them is read at **1200 8N1**. The mouse column is which
 protocol was spoken, not how the port was opened -- and on the PL2303 it is
-both, because that mouse changes protocol when the middle button is pressed.
+both -- the same mouse has been read as each, and what selects it is not
+known; see below.
 
 **Only the FTDI row is not current.** It was measured before the serial path
 was reworked -- the stream detector, the re-decision, and
@@ -96,7 +97,7 @@ USBMOUSE 1.1.0 resident.  INT 33h installed.
 the driver had to change its mind:
 
 ```
-  protocol seen=Mouse Systems, 1200 8N1, 5 bytes.    protocol decided again (middle button switches this mouse)=0
+  protocol seen=Mouse Systems, 1200 8N1, 5 bytes.    protocol decided again=0
 ```
 
 Nothing about the protocols resembles each other:
@@ -193,39 +194,64 @@ nothing to click, so `buttons seen=00` and the driver's "no button bit has
 ever arrived" note are correct. The button paths are covered by `MOUSETST`'s
 synthetic checks, which pass 34/34, and by `CLICKTST` with a hand present.
 
-### The mouse changes protocol while it is running
+### The same mouse speaks either protocol, and nobody knows what picks it
 
-This section used to record a gap: the Keyspan/Mouse-Systems pair had been
-verified before the protocol sniff was added, so the branch that reached 8N1
-through silence had never met that mouse. Answering it found something
-bigger.
+The mouse on the bench has been read as **Mouse Systems** by `MOUPROBE` and
+as **Microsoft** by this driver, minutes apart, on one adapter, without being
+unplugged. That is not a detector being flaky -- both readings are correct,
+and the byte streams are unambiguous.
 
-**The mouse on the bench powers up as Microsoft and switches to Mouse
-Systems the moment the middle button is pressed.** That is the Logitech
-convention, and it is how a two-button protocol carries a three-button
-mouse -- Microsoft has no middle button to report, so a mouse with one has
-to change language to mention it.
-
-It was found by accident and looked like a bug. Two `MOUPROBE` runs a minute
-apart identified the same mouse, on the same adapter, as different
-protocols. The giveaway was not in the bytes but in the buttons:
+**The mechanism is not known, and the first answer was wrong.** It looked
+like the middle button: the Logitech convention is that a mouse switches to
+Mouse Systems to report a third button, since Microsoft has no way to carry
+one. Two probe runs fitted perfectly --
 
 | run | buttons seen | ended as |
 |---|---|---|
 | 1 | left right **middle** | Mouse Systems |
 | 2 | left right | Microsoft |
 
-The probe was right both times, and reading the stream is what made it
-possible to be right at all -- a driver told which protocol to expect would
-have been wrong in one of those two runs with no way to notice.
+-- and it was written up as established. It is not. Tested directly, with
+the driver resident and the mouse in Microsoft mode, pressing **only the
+middle button, repeatedly**:
 
-**So the driver decides again when the decode falls apart.** The trigger has
-to be one a healthy stream cannot pull, because a single odd byte is normal:
-the CH375 loses bytes, 3 to 19 in these runs. `ser_bad` counts bytes thrown
+```
+  button bits ever seen in a raw report: 03
+  press counts   left=2  right=6  middle=0
+  protocol seen=Microsoft, 1200 7N1, 3 bytes.    protocol decided again=0
+  serial reads=1841  packets=1840  bytes resynced past=3
+```
+
+1840 packets decoded, resyncs unchanged, protocol unmoved. **The middle
+button does not switch this mouse.**
+
+What the evidence does support is that the protocol is settled **at
+power-up**, and that opening the port IS a power cycle -- `SerOpen` raises
+RTS and DTR, which is where the mouse gets its power. So every program that
+opens the port gets its own answer, and they disagree:
+
+| who opened it | this adapter | protocol |
+|---|---|---|
+| `MOUPROBE` | Keyspan | Mouse Systems |
+| `USBMOUSE` | Keyspan | Microsoft |
+| `USBMOUSE` | PL2303 | Mouse Systems |
+
+Something in how the lines are brought up differs between the two programs
+and between the two adapters, and that is as far as the evidence goes. The
+honest version is: **unknown**.
+
+**Which is why the driver decides from the stream and decides again.** Not
+knowing the mechanism is exactly the case for not depending on it. A driver
+that latches the protocol once is betting the answer never changes under it,
+and the cost of losing that bet is total -- wrong framing, wrong button
+sense, wrong movement, until it is reloaded.
+
+The re-decision trigger has to be one a healthy stream cannot pull, because a
+lone odd byte is normal: the CH375 drops them. `ser_bad` counts bytes thrown
 away **with no report delivered between them**, and every delivered report
-clears it, so a lone dropped byte never gets near the threshold of 8. A
-decoder reading the wrong protocol fails continuously and reaches it inside
-about two packets.
+clears it, so a single drop never gets near the threshold of 8. A decoder
+reading the wrong protocol fails continuously and reaches it inside about two
+packets.
 
 Measured both directions on hardware:
 
@@ -234,11 +260,17 @@ Measured both directions on hardware:
 | started correct, 3280 serial reads | **0** | 1329 |
 | started deliberately locked to the WRONG protocol | **1** | 1329 |
 
-The second row is the test worth keeping. It is a build with the protocol
-pinned to the wrong one on purpose, meeting a real mouse with real movement
-and real clicks, and it converged immediately and finished with matched
-press and release counts on all three buttons. A recovery path that has
-never run is not a recovery path.
+The second row is the one worth keeping: a build with the protocol pinned
+wrong on purpose, meeting a real mouse with real movement and real clicks. It
+converged immediately and finished with matched press and release counts on
+all three buttons. A recovery path that has never run is not a recovery path.
+
+**A real consequence, visible in the button counts.** Microsoft carries two
+buttons, so when the mouse comes up in that mode the middle button is not
+merely unreported -- it does not exist on the wire. `CLICKTST` shows `button
+bits ever seen 03` and `middle=0`, and that is correct behaviour, not a lost
+press. The same mouse through `MOUPROBE`, which got Mouse Systems, reports
+`left right middle`.
 
 ### A wrong diagnosis, and how it was reached
 
