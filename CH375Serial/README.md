@@ -65,6 +65,39 @@ Keyspan never did:
   3 on the other. Copying one into the other gives a port that opens
   cleanly and reads garbage.
 
+#### Testing a full-screen terminal without a person at the keyboard
+
+`SERTERM` went untested on anything but the reference adapter for a while on
+the grounds that it is interactive, so running it over the bridge would hang
+waiting for a keypress. Both halves of that were wrong.
+
+It already takes **`/S=n`, "quit after n seconds, for unattended testing"**,
+which was in its own help text the whole time. And a terminal that nobody
+types into proves very little -- it opened the port and exchanged nothing,
+which is the same output a broken one would produce.
+
+`KINJ` supplies the keystrokes. It is the bridge's resident injector, it
+hooks `INT 16h`, and `SERTERM` reads the keyboard through `INT 16h`, so the
+two fit without either knowing about the other:
+
+```
+mkkeys.py modem.txt > MODEM.KI          # PAUSE, TEXT AT, KEY Enter, SNAP
+dosexec "KINJ.COM C:\WORK\MODEM.KI" "SERTERM.EXE /S=14 /B=9600" "KINJ.COM /D"
+```
+
+which gives, on a PL2303 with the Courier attached:
+
+```
+AT
+OK
+ Prolific PL2303  9600 8N1   rx 9   tx 3   ALT-X quit  ALT-H hangup
+```
+
+Three bytes out, nine back, rendered on the terminal. The long first pause
+matters: the adapter takes several seconds to enumerate and open, and
+anything typed before that is simply dropped because the program is not
+listening yet.
+
 #### The PL2303, and what it cost to add
 
 Almost nothing, because **its line settings are the CDC ones** --
@@ -111,7 +144,8 @@ passes a test the other cannot, the interface is not doing its job.
 | 58-character echo | **exact**, 3 pkts | **exact**, 7 pkts | **exact**, 41 pkts |
 | `ATI4` dump | 35 pkts | 72 pkts | 627 pkts |
 | config found with no `/C=` | yes, 1 of 2 | yes, 0 of 1 | yes, 0 of 1 |
-| ANSI terminal, dial-out | yes | not exercised | not exercised |
+| ANSI terminal (`SERTERM`) | yes | not exercised | **yes** -- rx 9, tx 3 |
+| dial-out | yes | not exercised | not exercised |
 
 The packet counts differ because the two parts batch differently -- the same
 58 characters arrive in three packets on one and seven on the other -- which
