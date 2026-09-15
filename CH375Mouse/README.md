@@ -238,8 +238,14 @@ middle button -- and it needs a short hold-back so the transitional states
 do not fire spurious left and right clicks, without swallowing genuine quick
 clicks.
 
-That is written and lives on the **`chord-wip` branch**. It is NOT on main,
-because it breaks the machine in a way not yet understood: `PS2TEST` dies
+**This is parked, by choice, and is not pending work.** The bench mouse is
+an old three-button one being retired for an ordinary two-button mouse, so
+nobody needs the chord decoded. The branch stays because the diagnosis above
+is worth keeping and the code may be useful to someone with a mouse that
+still needs it.
+
+It lives on the **`chord-wip` branch** and is NOT on main, because it breaks
+the machine in a way that was never understood: `PS2TEST` dies
 with `Runtime error 200` inside its inline `int 11h`, a program that
 performs no division, while our `int11` handler is byte-identical to the
 working build. It fails the same way with `/2`, which makes the new logic
