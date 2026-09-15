@@ -118,6 +118,19 @@ the Linux driver tells them apart. Sending the wrong one does not fail --
 it configures a chip that then will not pass data, which is the least
 helpful way to be wrong.
 
+**The magic runs once per device, not once per open**, and that distinction
+cost real time. `SerOpen` and `SerClose` are a power cycle on purpose -- a
+serial mouse is fed from RTS and DTR -- so anything that reopens a port runs
+the open path repeatedly. Re-running the vendor sequence there left the port
+**delivering nothing at all**, intermittently, which reads as dead hardware
+rather than as a driver fault: the first symptom was a mouse that appeared
+unpowered on this adapter and worked on every other one.
+
+So `Pl2303Init` is separate from `Pl2303Open`, guarded by `Pl2303Inited`
+which `SerDetect` clears. Open and close now move only the control lines,
+which is all a power cycle needs, and `SerClose` no longer re-runs the magic
+on the way out.
+
 **It costs about ten times the USB transactions of the other two.** The same
 58-character echo arrives in 3 packets on the Keyspan, 7 on the FTDI and
 **41** on the PL2303; the `ATI4` dump takes 35, 72 and **627**. The reason

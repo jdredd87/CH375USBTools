@@ -32,9 +32,13 @@ DTR raised and decodes serial mouse packets instead of HID reports.
 
 | adapter | mouse | verified |
 |---|---|---|
-| Keyspan `06CD:0121` | Mouse Systems, 1200 8N1, 5 bytes, 3 buttons | `MOUSETST` 34/34, `PS2TEST` 25/25 -- but **before** the protocol sniff was added; see below |
-| FTDI FT232 `0403:6001` | Microsoft, 1200 7N1, 3 bytes, 2 buttons | `MOUSETST` 34/34, 255 reports, 0 resyncs |
-| Prolific PL2303 `067B:23A3` | Mouse Systems | `MOUSETST` 34/34, `PS2TEST` 25/25 with 240 PS/2 packets |
+| Keyspan `06CD:0121` | Mouse Systems, 5 bytes, 3 buttons | `MOUSETST` 34/34, `PS2TEST` 25/25 |
+| FTDI FT232 `0403:6001` | Microsoft, 3 bytes, 2 buttons | `MOUSETST` 34/34, 255 reports, 0 resyncs |
+| Prolific PL2303 `067B:23A3` | **both, from the same mouse** | `MOUSETST` 34/34, `PS2TEST` 25/25 with 200 PS/2 packets, `CLICKTST` 1329 reports with matched press and release counts on all three buttons |
+
+Every one of them is read at **1200 8N1**. The mouse column is which
+protocol was spoken, not how the port was opened -- and on the PL2303 it is
+both, because that mouse changes protocol when the middle button is pressed.
 
 ### One framing reads both protocols
 
@@ -65,29 +69,31 @@ So one framing reads both, the decoder tells them apart from the data, and
 nothing depends on an announcement that may never come or may arrive by
 accident.
 
-**The driver works out both, and they are decided at different moments.**
-Which ADAPTER it is comes from the USB ID, before the port exists. Which
-MOUSE it is has to be settled before the framing is committed, because the
-two protocols disagree about the number of DATA BITS -- open the port at the
-wrong width and every byte arrives mangled, so no amount of looking at the
-stream afterwards can recover it.
+**The adapter and the mouse are decided at different moments.** Which
+ADAPTER it is comes from the USB ID, before the port exists. Which MOUSE it
+is comes from the stream afterwards, and because both protocols are read at
+one framing, nothing has to be known before the port is opened.
 
-The mouse itself decides it. A Microsoft mouse answers `'M'` when its power
-comes up; a Mouse Systems mouse says nothing at all. So the driver opens at
-7N1, listens for about a second, and takes silence as the other answer --
-7 first because that is the one with a positive result, where silence at 8N1
-would mean nothing.
+That is why the install banner does not name a protocol. It used to, before
+a single byte had arrived, which was a guess printed as a fact:
 
 ```
-Serial mouse: Microsoft, 1200 7N1, 3 bytes.  bulk IN 1, control OUT 2, VID/PID 0403/6001
+Serial mouse (protocol decided from the stream; /S reports it): bulk IN 3, control OUT 2, VID/PID 067B/23A3
 USBMOUSE 1.1.0 resident.  INT 33h installed.
+```
+
+`/S` answers it once the mouse has spoken, with the count of how many times
+the driver had to change its mind:
+
+```
+  protocol seen=Mouse Systems, 1200 8N1, 5 bytes.    protocol decided again (middle button switches this mouse)=0
 ```
 
 Nothing about the protocols resembles each other:
 
 | | Mouse Systems | Microsoft |
 |---|---|---|
-| framing | 1200 8N1 | 1200 **7**N1 |
+| the mouse sends | 8 data bits | **7** data bits -- but both are READ at 8N1, see above |
 | packet | 5 bytes | 3 bytes |
 | sync bit | bit **7** of the header | bit **6** of the header |
 | movement | two whole samples, summed | **split across bytes** -- top 2 bits of each axis ride in the header |
@@ -105,25 +111,52 @@ of wasted USB transactions on the other -- four per tick at 145 Hz, in the
 timer interrupt, for an idle mouse. The drain stops on a read that contained
 no DATA, which is right for both.
 
-### Known untested: Mouse Systems on the Keyspan, since the sniff changed
+### The mouse changes protocol while it is running
 
-The Keyspan/Mouse-Systems combination in the table above was verified when
-the driver opened **straight at 8N1**. It does not any more. Meeting a
-Microsoft mouse on the FTDI made the bring-up open at **7N1 first**, listen
-about a second for the `'M'` a Microsoft mouse sends, and fall back to 8N1
-only on silence.
+This section used to record a gap: the Keyspan/Mouse-Systems pair had been
+verified before the protocol sniff was added, so the branch that reached 8N1
+through silence had never met that mouse. Answering it found something
+bigger.
 
-That fallback is new logic sitting directly in front of the path that used
-to work, and it was written and tested against a Microsoft mouse on a
-different adapter. A Mouse Systems mouse says nothing at power-up, so it
-reaches the 8N1 path through the silence branch -- which is the branch no
-hardware has taken yet.
+**The mouse on the bench powers up as Microsoft and switches to Mouse
+Systems the moment the middle button is pressed.** That is the Logitech
+convention, and it is how a two-button protocol carries a three-button
+mouse -- Microsoft has no middle button to report, so a mouse with one has
+to change language to mention it.
 
-It should work. "Should" is what this file has already spent hours on, so it
-is recorded as untested rather than carried forward as verified. It is a
-two-minute check with that mouse on that adapter: the bring-up banner should
-say **Mouse Systems, 1200 8N1, 5 bytes**, and `MOUSETST` should pass 34/34
-with `bytes resynced past` at or near zero.
+It was found by accident and looked like a bug. Two `MOUPROBE` runs a minute
+apart identified the same mouse, on the same adapter, as different
+protocols. The giveaway was not in the bytes but in the buttons:
+
+| run | buttons seen | ended as |
+|---|---|---|
+| 1 | left right **middle** | Mouse Systems |
+| 2 | left right | Microsoft |
+
+The probe was right both times, and reading the stream is what made it
+possible to be right at all -- a driver told which protocol to expect would
+have been wrong in one of those two runs with no way to notice.
+
+**So the driver decides again when the decode falls apart.** The trigger has
+to be one a healthy stream cannot pull, because a single odd byte is normal:
+the CH375 loses bytes, 3 to 19 in these runs. `ser_bad` counts bytes thrown
+away **with no report delivered between them**, and every delivered report
+clears it, so a lone dropped byte never gets near the threshold of 8. A
+decoder reading the wrong protocol fails continuously and reaches it inside
+about two packets.
+
+Measured both directions on hardware:
+
+| | re-decisions | reports |
+|---|---|---|
+| started correct, 3280 serial reads | **0** | 1329 |
+| started deliberately locked to the WRONG protocol | **1** | 1329 |
+
+The second row is the test worth keeping. It is a build with the protocol
+pinned to the wrong one on purpose, meeting a real mouse with real movement
+and real clicks, and it converged immediately and finished with matched
+press and release counts on all three buttons. A recovery path that has
+never run is not a recovery path.
 
 ### A wrong diagnosis, and how it was reached
 
@@ -218,6 +251,20 @@ mouse dead, and a dead mouse is indistinguishable from a wrong baud rate, a
 bad cable, or an unsupported adapter. `SerOpen` raises both on every family
 and `SerClose` drops both, so a close/open pair is a power cycle with no
 adapter-specific code — which is also what makes a mouse announce itself.
+
+**`MOUPROBE` no longer does that, and the reason is a warning.** It used to
+open, close and open again to force the announcement out of a Microsoft
+mouse. On a PL2303 that pair left the adapter delivering **nothing at all**,
+intermittently, which presents exactly as an unpowered mouse and sent the
+tool hunting RTS and DTR for an evening. What settled it was running the
+*driver* against the same adapter in the same state — 263 reports, 34/34.
+The adapter was healthy and the diagnostic was the broken one.
+
+The announcement is not needed now in any case: the protocol comes out of
+the stream, which works for a mouse that says nothing, for one being moved
+while it speaks, and for one that changes protocol halfway through. So the
+probe opens once, and a mouse that was unpowered gets its power-on from that
+single `SerOpen` anyway.
 
 Verified on a Keyspan (InnoSys) `06CD:0121` against a three-button mouse:
 

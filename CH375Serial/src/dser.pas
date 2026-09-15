@@ -172,6 +172,14 @@ function BringUp(var Cfg: TBigCfg; var Len: Word;
 
 implementation
 
+var
+  { The PL2303's vendor initialisation runs once per enumeration, not once
+    per open -- see Pl2303Open.  Cleared by SerDetect, which is the one
+    moment we know the device was freshly found. }
+  Pl2303Inited: Boolean = False;
+
+procedure Pl2303Init(var D: TSerDev); forward;
+
 function SerFamilyName(F: TSerFamily): ShortString;
 begin
   case F of
@@ -226,6 +234,7 @@ begin
   D.HasNotify := False;
   D.StatusHdr := 0;
   D.EpCtrlOut := 0; D.EpStatIn := 0;
+  Pl2303Inited := False;         { a freshly found device needs its init }
   D.NBulkIn := 0; D.NBulkOut := 0;
   SawCdc := False; SawData := False;
   CurIf := -1; CurCls := 0; CurSub := 0;
@@ -540,8 +549,60 @@ var
 begin
   Pl2303Open := False;
 
-  { The initialisation, in this order.  A read whose answer is discarded is
-    still a step. }
+  { CLOSING IS NOT OPENING BACKWARDS.
+    
+    SerClose calls this with Enable = 0, and running the whole vendor
+    initialisation again to close a port is both pointless and harmful: the
+    part does not come back.  A close/open pair -- which is how every caller
+    power-cycles a serial mouse, because RTS and DTR are its supply -- left
+    the adapter delivering nothing at all, and that reads as an unpowered
+    mouse rather than as a driver that broke its own port.
+    
+    So closing only drops the lines.  The magic belongs to opening. }
+  if Enable = 0 then
+  begin
+    Pl2303Open := CtrlNoData($21, CDC_SET_CTRL_LINE, $0000, 0) = INT_SUCCESS;
+    Exit;
+  end;
+
+  { THE MAGIC IS AN INITIALISATION, NOT PART OF OPENING, and getting that
+    backwards is what made this adapter flaky.
+
+    Every caller that power-cycles a serial mouse does it by closing and
+    re-opening the port, because RTS and DTR are the mouse's supply.  With
+    the sequence inside the open, that ran the whole vendor initialisation
+    two or three times in a few hundred milliseconds -- and the part stops
+    answering.  It presents as an unpowered mouse: bytes at the wrong rate,
+    then nothing, intermittently, which is about the least informative
+    failure available.
+
+    So it runs ONCE per enumeration.  SerDetect clears the flag, which is
+    the only moment we know the device is freshly found. }
+  if not Pl2303Inited then
+  begin
+    Pl2303Init(D);
+    Pl2303Inited := True;
+  end;
+
+  { From here it is CDC, byte for byte. }
+  B[0] := Byte(Baud and $FF);
+  B[1] := Byte((Baud shr 8) and $FF);
+  B[2] := Byte((Baud shr 16) and $FF);
+  B[3] := Byte((Baud shr 24) and $FF);
+  if Stop >= 2 then B[4] := 2 else B[4] := 0;
+  B[5] := Par;
+  B[6] := Bits;
+  R := CtrlOut($21, CDC_SET_LINE_CODING, 0, 0, B, 7);
+  if R <> INT_SUCCESS then Exit;
+  R := CtrlNoData($21, CDC_SET_CTRL_LINE, $0003, 0);
+  Pl2303Open := R = INT_SUCCESS;
+end;
+
+{ The vendor initialisation.  A read whose answer is discarded is still a
+  step: the part will not configure without them. }
+procedure Pl2303Init(var D: TSerDev);
+var Last: Word;
+begin
   Pl2303Rd($8484);
   Pl2303Wr($0404, 0);
   Pl2303Rd($8484);
@@ -561,22 +622,6 @@ begin
   Last := DevDesc[12] or (Word(DevDesc[13]) shl 8);
   if Last >= $0300 then Pl2303Wr(2, $44) else Pl2303Wr(2, $24);
 
-  { From here it is CDC, byte for byte. }
-  B[0] := Byte(Baud and $FF);
-  B[1] := Byte((Baud shr 8) and $FF);
-  B[2] := Byte((Baud shr 16) and $FF);
-  B[3] := Byte((Baud shr 24) and $FF);
-  if Stop >= 2 then B[4] := 2 else B[4] := 0;
-  B[5] := Par;
-  B[6] := Bits;
-  R := CtrlOut($21, CDC_SET_LINE_CODING, 0, 0, B, 7);
-  if R <> INT_SUCCESS then Exit;
-
-  if Enable <> 0 then
-    R := CtrlNoData($21, CDC_SET_CTRL_LINE, $0003, 0)
-  else
-    R := CtrlNoData($21, CDC_SET_CTRL_LINE, $0000, 0);
-  Pl2303Open := R = INT_SUCCESS;
 end;
 
 function Cp210xOpen(var D: TSerDev; Baud: LongInt;

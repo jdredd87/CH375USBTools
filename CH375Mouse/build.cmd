@@ -61,7 +61,9 @@ for %%T in (mouprobe) do (
   echo --- %%T
   fpc -Tmsdos -Pi8086 -WmLarge -Fu"%TOOLS%" -Fu"%SERIAL%" -Fusrc -FEbin -FUbin src\%%T.pas >nul
   if errorlevel 1 goto failed
-)if exist bin\*.a   del /q bin\*.a
+)
+
+if exist bin\*.a   del /q bin\*.a
 if exist bin\*.o   del /q bin\*.o
 if exist bin\*.ppu del /q bin\*.ppu
 

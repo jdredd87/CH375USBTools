@@ -59,9 +59,22 @@ type
 
 function  ProtoName(P: TMouseProto): ShortString;
 
-{ Data bits the protocol needs on the wire: 7 for Microsoft, 8 for Mouse
-  Systems.  A caller passes this straight to SerOpen, which is the only
-  reason this unit knows the number at all. }
+{ Data bits to open the port at.  EIGHT, for both protocols, and that is
+  the useful fact rather than a shortcut.
+
+  Microsoft sends seven data bits, so reading it at EIGHT captures the stop
+  bit as bit 7 and every byte arrives with 80h set -- the 40h header as C0h,
+  the 00-3Fh bodies as 80-BFh.  Framing still works, because the receiver
+  then takes the idle line as its stop bit.
+
+  That is worth having because at 8N1 the two protocols stop overlapping:
+
+    Microsoft      header C0-FFh, every THREE bytes, bodies 80-BFh
+    Mouse Systems  header 80-87h, every FIVE bytes
+
+  So one framing reads both and the stream says which it is.  Opening at
+  seven was what made the protocol have to be known BEFORE the port could be
+  opened, and that is what drove the unreliable identification below. }
 function  ProtoBits(P: TMouseProto): Byte;
 
 { What a mouse announced when its power lines were raised.  A Microsoft
@@ -107,7 +120,7 @@ end;
 
 function ProtoBits(P: TMouseProto): Byte;
 begin
-  if P = mpMouseSys then ProtoBits := 8 else ProtoBits := 7;
+  ProtoBits := 8;
 end;
 
 function IdentifyId(const Buf; Len: Word): TMouseProto;
@@ -118,10 +131,23 @@ begin
   IdentifyId := mpUnknown;
   if Len = 0 then Exit;
   P := @Buf;
-  { The announcement is 'M', possibly with junk around it: the first byte
-    out of a mouse that has just been powered up is not always clean,
-    because the line settles while the UART is already listening. }
+  { 'M' MUST BE AT THE VERY FRONT, and this used to scan the whole burst.
+
+    A mouse that is being MOVED while its power comes up is sending
+    movement bytes, and one of them was 4Dh.  A three-button Mouse Systems
+    mouse was identified as Microsoft on exactly that, then opened at seven
+    data bits, and the resulting nonsense was diagnosed as everything except
+    a bad identification.
+
+    An announcement arrives first or it is not an announcement.  Two bytes
+    of slack covers a line still settling; more than that is scanning data
+    for a letter and calling it a name.
+
+    Even so, prefer IdentifyStream: a mouse that says nothing is not a
+    failure, and a mouse that says something can be moved while it does. }
   for I := 0 to Len - 1 do
+  begin
+    if I > 2 then Break;
     if P[I] = Ord('M') then
     begin
       { 'M3' is the three-button Logitech.  Checked before returning
@@ -133,6 +159,7 @@ begin
         IdentifyId := mpMicrosoft;
       Exit;
     end;
+  end;
 end;
 
 { Score a candidate framing by CADENCE, and judge it by a rule that was
@@ -183,8 +210,8 @@ end;
 function IdentifyStreamEx(const Buf; Len: Word;
                           var WrongBits: Boolean): TMouseProto;
 var
-  P : PByte;
-  N : Byte;
+  P    : PByte;
+  N, M : Byte;
 begin
   IdentifyStreamEx := mpUnknown;
   WrongBits := False;
@@ -197,6 +224,31 @@ begin
   begin
     IdentifyStreamEx := mpMouseSys;
     Exit;
+  end;
+
+  { Microsoft READ AT EIGHT BITS: the stop bit lands in bit 7, so the 40h
+    header arrives as C0h -- bits 7 and 6 both set -- every third byte.
+
+    THE HEADER TEST ALONE IS NOT ENOUGH, and that is worth stating because
+    it was tried and it was wrong.  Mouse Systems movement bytes are
+    frequently FCh, FEh, FFh -- small negative movement -- and those have
+    both top bits set too, so on a five-byte stream some period-three phase
+    matches by coincidence and a Mouse Systems mouse is announced as a
+    Microsoft one.  It did exactly that.
+
+    The discriminator is the BODY bytes.  Microsoft's are 00-3Fh, which at
+    eight bits arrive as 80-BFh: bit 7 set and bit 6 CLEAR, always.  Mouse
+    Systems has no such constraint.  So require the header phase to be all
+    headers AND both other phases to be all bodies. }
+  Cadence(P, Len, 3, $C0, $C0, N);
+  if N = 1 then
+  begin
+    Cadence(P, Len, 3, $C0, $80, M);
+    if M = 2 then
+    begin
+      IdentifyStreamEx := mpMicrosoft;
+      Exit;
+    end;
   end;
 
   { The same mouse through SEVEN data bits, which strips bit 7 and turns
@@ -247,6 +299,9 @@ begin
   case D.Proto of
     mpMicrosoft, mpLogitech:
       begin
+        { Read at eight bits, so every byte carries the stop bit in bit 7.
+          Strip it and the protocol is its documented self again. }
+        B := B and $7F;
         { RESYNCHRONISE ON THE HEADER RATHER THAN COUNTING BLINDLY.  A
           byte lost anywhere -- and one will be, sooner or later, on a
           line nobody is flow-controlling -- puts a counting decoder

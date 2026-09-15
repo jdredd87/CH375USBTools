@@ -148,6 +148,9 @@ ser_ctog: db    0x80             ; toggle for the control endpoint
 ser_anyep: db   0                ; 1 = take endpoints whatever type they claim
 ser_bud:  db    0                ; reads left in this tick's drain
 ser_proto: db   SP_MOUSESYS       ; which serial mouse protocol
+ser_undef: db   1                 ; 1 = the protocol is not settled yet
+ser_bad:  db    0                ; bytes thrown away with no report between
+ser_redec: dw   0                ; times the protocol was decided again
 ser_bits: db    7                 ; data bits the port is opened at
 ser_full: dw    0                ; drains that used the WHOLE budget, i.e.
                                  ; ticks that ran out of patience with bytes
@@ -756,6 +759,23 @@ cb_lo:
 cb_out:
         ret
 
+; A byte thrown away.  Count it, and watch for the decoder having lost the
+; PROTOCOL rather than merely a byte -- see the note in ser_feed.  AL is the
+; byte and one caller still needs it, so it is preserved.
+ser_lostb:
+        push    ax
+        inc     word [ser_lost]
+        inc     byte [ser_bad]
+        cmp     byte [ser_bad], 8
+        jb      short sl_out
+        mov     byte [ser_bad], 0
+        mov     byte [ser_undef], 1      ; decide again at the next header
+        mov     byte [ser_n], 0
+        inc     word [ser_redec]
+sl_out:
+        pop     ax
+        ret
+
 ser_feed:
         push    cx
         push    si
@@ -764,16 +784,47 @@ ser_feed:
         ;
         ; At 8N1 a Microsoft header arrives as C0-FFh (bit 6 set, bit 7 put
         ; there by the stop bit) and a Mouse Systems header as 80-87h.  The
-        ; ranges do not overlap, so the first header seen settles it and
-        ; every one after that confirms it.
+        ; ranges do not overlap, so one header settles it.
+        ;
+        ; IT IS DECIDED AGAIN WHEN THE DECODE FALLS APART, and that is not a
+        ; refinement -- THE MOUSE CHANGES PROTOCOL WHILE RUNNING.  This one
+        ; powers up as Microsoft and switches to Mouse Systems the moment
+        ; the MIDDLE BUTTON is pressed, which is the Logitech convention and
+        ; is how a two-button protocol carries a three-button mouse.  Two
+        ; probe runs a minute apart read the same mouse as each protocol,
+        ; and the giveaway was in the buttons: the run that saw a middle
+        ; click ended in Mouse Systems, the run that did not stayed
+        ; Microsoft.
+        ;
+        ; So a driver that latches the protocol once works perfectly until
+        ; the user presses the middle button, and is then wrong for ever --
+        ; wrong framing, wrong button sense, wrong movement.  Deciding again
+        ; costs the eight bytes it takes to notice.
+        ;
+        ; Re-deciding needs a trigger that a healthy stream cannot pull.
+        ; ser_bad counts bytes thrown away WITH NO REPORT BETWEEN THEM and
+        ; is cleared by every report delivered, so an occasional dropped
+        ; byte -- which happens, the CH375 loses them -- never reaches the
+        ; threshold.  Only a decoder reading the wrong protocol fails
+        ; continuously, and it gets there within about two packets.
         cmp     byte [ser_n], 0
         jne     short sf_inpkt
+        cmp     byte [ser_undef], 0
+        je      short sf_inpkt
         mov     ah, al
         and     ah, 0xC0
         cmp     ah, 0xC0
         jne     short sf_notms
         mov     byte [ser_proto], SP_MICROSOFT
+        mov     byte [ser_undef], 0
+        jmp     short sf_inpkt
 sf_notms:
+        mov     ah, al
+        and     ah, 0xF8
+        cmp     ah, 0x80
+        jne     short sf_inpkt
+        mov     byte [ser_proto], SP_MOUSESYS
+        mov     byte [ser_undef], 0
 sf_inpkt:
         cmp     byte [ser_proto], SP_MICROSOFT
         je      ms_feed
@@ -787,7 +838,7 @@ sf_inpkt:
         and     ah, 0xF8
         cmp     ah, 0x80
         je      short sf_hdr
-        inc     word [ser_lost]
+        call    ser_lostb
         jmp     sf_out
 sf_hdr:
         call    ser_btns
@@ -875,7 +926,7 @@ ms_feed:
         ; A header always starts a fresh report.
         cmp     byte [ser_n], 0
         je      short ms_hdr
-        inc     word [ser_lost]          ; a short report; start again
+        call    ser_lostb                ; a short report; start again
 ms_hdr:
         mov     [ser_pkt], al
         mov     byte [ser_n], 1
@@ -883,7 +934,7 @@ ms_hdr:
 ms_body:
         cmp     byte [ser_n], 0
         jne     short ms_store
-        inc     word [ser_lost]          ; body byte with no header
+        call    ser_lostb                ; body byte with no header
         jmp     sf_out
 ms_store:
         mov     bl, [ser_n]
@@ -1000,6 +1051,8 @@ ser_emit5:
 ser_emit:
         push    ax
         inc     word [ser_reps]
+        mov     byte [ser_bad], 0        ; the protocol is reading correctly
+
         mov     al, [ser_btn]
         mov     [rep_buf], al
         mov     ax, bx
@@ -2168,6 +2221,20 @@ stat_have:
         jne     short stat_serial
         jmp     stat_nops2
 stat_serial:
+        mov     dx, msg_s_proto
+        call    puts
+        mov     dx, msg_p_sys
+        cmp     byte [es:ser_proto], SP_MICROSOFT
+        jne     short st_psay
+        mov     dx, msg_p_ms
+st_psay:
+        call    puts
+        mov     dx, msg_s_redec
+        call    puts
+        mov     ax, [es:ser_redec]
+        call    putdecw
+        call    crlf
+
         mov     dx, msg_s_sread
         call    puts
         mov     ax, [es:ser_reads]
@@ -2385,12 +2452,7 @@ bu_present:
         call    delay_ms
         call    drain
 
-        mov     al, CMD_SET_RETRY
-        call    ch_cmd
-        mov     al, 0x25
-        call    ch_wr
-        mov     al, 0x8F                 ; retry NAKs while enumerating
-        call    ch_wr
+        call    ser_enum_ready           ; 8F: retry NAKs while enumerating
 
 ; --------------------------------------------------------------------------
 ; Drop the bus to 1.5 Mbps if this is a low-speed device -- which nearly
@@ -2586,13 +2648,10 @@ bu_seropen:
         ; CH375Net hit this three times in one session and moved the fix
         ; into the bring-up so no caller could forget it.  This is the
         ; fourth, in a different project, for exactly the same reason: a
-        ; new code path that returns before the shared tail.
-        mov     al, CMD_SET_RETRY
-        call    ch_cmd
-        mov     al, 0x25
-        call    ch_wr
-        xor     al, al
-        call    ch_wr
+        ; new code path that returns before the shared tail.  It is now
+        ; ser_open's job -- see set_retry_n -- and this call is the belt to
+        ; that braces, kept because this path returns early.
+        call    ser_poll_ready
 
         mov     byte [ep_tog], 0x80
         clc
@@ -2607,12 +2666,7 @@ bu_nothid:
 
 bu_ready:
         ; --- from here on a NAK must come back immediately ---
-        mov     al, CMD_SET_RETRY
-        call    ch_cmd
-        mov     al, 0x25
-        call    ch_wr
-        mov     al, 0x00
-        call    ch_wr
+        call    ser_poll_ready
 
         mov     byte [ep_tog], 0x80
         clc
@@ -3073,6 +3127,43 @@ snf_yes:
         ret
 
 ; --------------------------------------------------------------------------
+; SET_RETRY, in one place, because forgetting it has cost five separate
+; bugs across these projects and two in this file alone.
+;
+;   8F  retry NAKs for ever.  Right while ENUMERATING: a busy device
+;       answers a control transfer with NAK and one NAK must not read as
+;       "absent".
+;   00  report NAKs immediately.  Required before ANY endpoint is polled,
+;       because an idle endpoint NAKs by design -- and with 8F still armed
+;       a poll never returns, it runs to the full timeout.  Do that from a
+;       145 Hz timer and the machine spends its life in the interrupt.  It
+;       made DOS unusable here and needed a reboot.
+;
+; Every occurrence had the same cause: a new code path that polls an
+; endpoint somewhere the existing call did not reach.  So the call now
+; belongs to the thing that OPENS A PORT rather than to each caller --
+; ser_poll_ready is invoked from ser_open's tail, where no new family or
+; new branch can miss it.
+; --------------------------------------------------------------------------
+set_retry_n:                             ; AL = the retry byte
+        push    ax
+        mov     al, CMD_SET_RETRY
+        call    ch_cmd
+        mov     al, 0x25
+        call    ch_wr
+        pop     ax
+        call    ch_wr
+        ret
+
+ser_enum_ready:                          ; about to enumerate
+        mov     al, 0x8F
+        jmp     short set_retry_n
+
+ser_poll_ready:                          ; about to poll an endpoint
+        xor     al, al
+        jmp     short set_retry_n
+
+; --------------------------------------------------------------------------
 ; A vendor request with no data stage.  AL = bRequest, BX = wValue,
 ; DX = wIndex.  This is how every family except the Keyspan is configured:
 ; the Keyspan takes a flat block on its own bulk endpoint, everyone else
@@ -3355,6 +3446,10 @@ so_keyspan:
         pushf
         mov     cx, 300                  ; let it announce itself and settle
         call    delay_ms
+        ; THE PORT IS OPEN, SO POLLING IS NEXT.  Whatever the caller does
+        ; from here, it will be reading an endpoint, and 8F left armed is
+        ; what turns that into a timeout per read.
+        call    ser_poll_ready
         popf
         ret
 ; --------------------------------------------------------------------------
@@ -3410,6 +3505,7 @@ so_ftdi:
         jc      short so_ftdi_no
         mov     cx, 300
         call    delay_ms
+        call    ser_poll_ready           ; see set_retry_n
         clc
         ret
 so_ftdi_no:
@@ -3466,6 +3562,9 @@ so_pl_last:
         call    ser_vwr
         ; From here it is CDC, byte for byte.
         call    ser_cdcline
+        pushf
+        call    ser_poll_ready           ; see set_retry_n
+        popf
         ret
 
 so_generic:
@@ -3873,13 +3972,16 @@ report_fs:
         call    putdec
         jmp     short report_ids
 report_ser:
+        ; DO NOT NAME THE PROTOCOL HERE.  This line is printed at install,
+        ; before a single byte has arrived, and the protocol is now decided
+        ; from the stream -- so whatever it said was the DEFAULT wearing the
+        ; clothes of a finding.  It announced "Mouse Systems" about a
+        ; Microsoft mouse that the decoder then went on to read correctly,
+        ; which is worse than saying nothing: it contradicts the driver's
+        ; own behaviour and sends the reader looking for a fault.
+        ;
+        ; /S reports it once there is data to report it from.
         mov     dx, msg_proto
-        call    puts
-        mov     dx, msg_p_ms
-        cmp     byte [ser_proto], SP_MICROSOFT
-        je      short rs_say
-        mov     dx, msg_p_sys
-rs_say:
         call    puts
         mov     dx, msg_found_s
         call    puts
@@ -4141,7 +4243,7 @@ msg_t_r1c:     db '  after speed, reg 1C: $'
 msg_t_descr:   db '  GET_DESCR device   : $'
 msg_lowspd:    db 'Low-speed device; USB bus set to 1.5 Mbps.', 13, 10, '$'
 msg_found:     db 'USB mouse on CH375: endpoint $'
-msg_proto:     db 'Serial mouse: $'
+msg_proto:     db 'Serial mouse (protocol decided from the stream; /S reports it): $'
 msg_p_ms:      db 'Microsoft, 1200 7N1, 3 bytes.  $'
 msg_p_sys:     db 'Mouse Systems, 1200 8N1, 5 bytes.  $'
 msg_found_s:   db 'bulk IN $'
@@ -4157,6 +4259,8 @@ msg_s_rep:     db '  reports=$'
 msg_s_rate:    db '  timer divisor=$'
 msg_s_btn:     db '  buttons seen=$'
 msg_s_brep:    db '  button reports=$'
+msg_s_proto:   db '  protocol seen=$'
+msg_s_redec:   db '  protocol decided again (middle button switches this mouse)=$'
 msg_s_sread:   db '  serial reads=$'
 msg_s_spkt:    db '  packets=$'
 msg_s_slost:   db '  bytes resynced past=$'

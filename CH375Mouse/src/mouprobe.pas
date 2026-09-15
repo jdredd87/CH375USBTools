@@ -229,11 +229,20 @@ end;
   and wrong for a pointing device. }
 function OpenFor(P: TMouseProto): Boolean;
 begin
-  OpenFor := False;
-  if not SerOpen(Dev, MOUSE_BAUD, ProtoBits(P), 0, 1, 1) then Exit;
-  SerClose(Dev);                         { drop RTS/DTR: the mouse loses power }
-  DelayMs(400);
+  { ONE OPEN.  This used to open, close and open again, to force a power
+    cycle so a Microsoft mouse would announce itself with 'M'.
+
+    Two reasons that is gone.  The announcement is no longer relied on --
+    the protocol is read out of the stream, which works for a mouse that
+    says nothing and for one that is being moved while it speaks.  And the
+    close/open pair was actively harmful on a PL2303: it left the adapter
+    delivering nothing at all, intermittently, which presents as an
+    unpowered mouse and sent this tool chasing RTS and DTR.
+
+    SerOpen raises RTS and DTR, so a mouse that was unpowered gets its
+    power-on here anyway. }
   OpenFor := SerOpen(Dev, MOUSE_BAUD, ProtoBits(P), 0, 1, 1);
+  if OpenFor then DelayMs(300);
 end;
 
 { Try one framing: wake the mouse, capture whatever it says, then ask for
@@ -246,6 +255,7 @@ var
   IdLen  : Word;
   SLen   : Word;
   Saw      : TMouseProto;
+  Use      : TMouseProto;
   WrongBits: Boolean;
   Dec_   : TMouseDec;
   Ev     : TMouseEvent;
@@ -335,10 +345,19 @@ begin
   else
     WriteLn('  The byte pattern fits ', ProtoName(Saw), '.');
 
-  { Decode with the framing actually in use, which is the honest test:
-    a stream that decodes into sane movement under this protocol is the
-    evidence, not a pattern match. }
-  MouseInit(Dec_, P);
+  { DECODE WITH THE PROTOCOL THE STREAM SAID, not the one we came in with.
+
+    This used to decode with P -- the framing being tried -- which made
+    sense when the framing and the protocol were the same choice, because
+    one needed seven data bits and the other eight.  They are not the same
+    choice any more: the port is opened at 8N1 either way and the stream
+    decides.  Decoding a Microsoft stream with Mouse Systems rules then
+    produced 96 reports against 138 resyncs and a third button that does
+    not exist on the mouse, directly under a line correctly identifying it
+    as Microsoft. }
+  Use := P;
+  if Saw <> mpUnknown then Use := Saw;
+  MouseInit(Dec_, Use);
   TotX := 0; TotY := 0; Btns := 0;
   for I := 0 to SLen - 1 do
     if MouseFeed(Dec_, Stream[I], Ev) then
@@ -349,6 +368,7 @@ begin
     end;
 
   WriteLn;
+  WriteLn('  decoded as         : ', ProtoName(Use));
   WriteLn('  reports decoded    : ', Dec_.Reports);
   WriteLn('  bytes resynced past: ', Dec_.Resyncs);
   WriteLn('  net movement       : X ', TotX, '  Y ', TotY);
@@ -369,7 +389,7 @@ begin
   { Convinced only if the reports decode AND the resync count is not
     telling us we are reading noise: a wrong framing produces plenty of
     "reports" and a resync count of the same order. }
-  if Dec_.Resyncs < Dec_.Reports then TryFraming := P;
+  if Dec_.Resyncs < Dec_.Reports then TryFraming := Use;
 end;
 
 var
@@ -474,16 +494,15 @@ begin
     Proto := TryFraming(mpMicrosoft, Moved, Diag, DiagBits)
   else
   begin
-    Proto := TryFraming(mpMicrosoft, Moved, Diag, DiagBits);
-    { ACT ON THE DIAGNOSIS rather than simply trying the other one.  The
-      first window can say "this is Mouse Systems read through seven
-      bits", and when it does there is nothing to explore -- the answer is
-      known and the second window is a confirmation, not a search. }
-    if (Proto = mpUnknown) or (not Moved) then
-      Proto := TryFraming(mpMouseSys, Moved, Diag, DiagBits);
-    { Two windows in the automatic path is one movement request more than
-      anybody wants, which is what /M and /W are for once the answer is
-      known.  The first window is what produces the diagnosis. }
+    { ONE WINDOW, because one framing now reads both protocols.
+
+      This used to ask for movement twice -- once at 7N1 for Microsoft and
+      once at 8N1 for Mouse Systems -- because the framing had to be chosen
+      before the port could be opened.  At 8N1 the two occupy header ranges
+      that do not overlap, so the stream says which it is and the second
+      request for somebody to wave a mouse is gone. }
+    Proto := TryFraming(mpMouseSys, Moved, Diag, DiagBits);
+    if (Diag <> mpUnknown) and (Diag <> Proto) then Proto := Diag;
   end;
 
   WriteLn;

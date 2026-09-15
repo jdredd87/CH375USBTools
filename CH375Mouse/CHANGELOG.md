@@ -53,8 +53,73 @@ and consumed driver variables as movement.
 
 ## Unreleased
 
-No code change. Two findings from the sibling projects were checked against
-this driver and recorded in the README:
+**THE MOUSE CHANGES PROTOCOL WHILE IT IS RUNNING.** This is the finding that
+matters, and nothing in the project expected it. The mouse on the bench
+powers up speaking Microsoft and switches to Mouse Systems **the moment the
+middle button is pressed** -- the Logitech convention, and how a two-button
+protocol carries a three-button mouse.
+
+It was found by accident and read as a bug at first: two `MOUPROBE` runs a
+minute apart identified the same mouse, on the same adapter, as different
+protocols. The giveaway was in the buttons rather than the bytes. The run
+that reported `left right middle` ended in Mouse Systems; the run that
+reported only `left right` stayed Microsoft. The probe was right both times.
+
+So a driver that decides the protocol once is correct until somebody presses
+the middle button, and wrong for ever after -- wrong framing, wrong button
+sense, wrong movement, and no way back short of reloading it.
+
+**The driver now decides again when the decode falls apart.** The trigger has
+to be one a healthy stream cannot pull, so it is not "a byte looked odd":
+`ser_bad` counts bytes thrown away **with no report delivered between them**
+and every delivered report clears it. An occasional dropped byte -- the CH375
+loses them, 3 to 19 in these runs -- never approaches the threshold of 8,
+because a report lands between each one. Only a decoder reading the wrong
+protocol fails continuously, and it gets there inside about two packets.
+
+Measured both ways, on hardware, rather than argued:
+
+| | re-decisions | reports |
+|---|---|---|
+| started correct, 3280 serial reads | **0** | 1329 |
+| started deliberately locked to the WRONG protocol | **1** | 1329 |
+
+The wrong-protocol build is the test that matters -- it is the real mouse,
+real movement and real clicks, with the decoder pointed at the wrong
+protocol on purpose. It converged immediately and finished with matched
+press and release counts on all three buttons.
+
+**The detector reads both protocols at 8N1**, in the probe as well as the
+driver. A 7-bit sender read at eight bits puts its stop bit in bit 7, which
+moves Microsoft's headers to `C0-FF` and its bodies to `80-BF`; Mouse
+Systems headers sit at `80-87`. The ranges do not overlap, so one framing
+reads both and one header settles which is being spoken.
+
+**`MOUPROBE` opens the port once.** It used to open, close and open again to
+force a power cycle, so a Microsoft mouse would announce itself with `M`.
+That announcement is no longer relied on -- the protocol comes out of the
+stream, which works for a mouse that says nothing and for one being moved
+while it speaks -- and on a PL2303 the close/open pair left the adapter
+delivering **nothing at all**, intermittently. It presented as an unpowered
+mouse and sent the tool hunting RTS and DTR for an evening.
+
+What settled it was running the driver against the same adapter in the same
+state: 263 reports and 34/34. The adapter was healthy and the diagnostic was
+the broken one. A probe that lies is worse than no probe, because it is what
+you reach for when confused.
+
+**`SET_RETRY` has one caller now.** `set_retry_n` with `ser_enum_ready` and
+`ser_poll_ready` in front of it, called from the tails of `ser_open`. This
+bug had appeared five times across these projects and twice in this one
+file, always from the same shape -- a new path that returns before the
+shared tail. Centralising it also cut `bytes resynced past` from 77 to 4.
+
+The install banner no longer names a protocol. It said which one before a
+single byte had arrived, which was a guess printed as a fact; `/S` reports
+it after the stream has spoken, alongside the re-decision count.
+
+Two findings from the sibling projects were checked against this driver and
+recorded in the README:
 
 * `CLR_STALL` resets the CH375's endpoint-0 data toggle, so manual control
   transfers work only every other time unless endpoint 0 is cleared first.
