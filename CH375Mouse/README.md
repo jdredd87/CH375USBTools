@@ -199,6 +199,62 @@ nothing to click, so `buttons seen=00` and the driver's "no button bit has
 ever arrived" note are correct. The button paths are covered by `MOUSETST`'s
 synthetic checks, which pass 34/34, and by `CLICKTST` with a hand present.
 
+### The middle button, and why it goes missing
+
+A three-button mouse that comes up in Microsoft mode loses its middle
+button, and the reason is in the protocol: Microsoft carries TWO buttons and
+has nowhere to put a third.
+
+This mouse sends the middle button as **both buttons at once**. The raw
+bytes say so plainly -- `/S` prints the last 32 off the wire, which is what
+this was found with:
+
+```
+EC (left) -> FC F0 F3 (both) -> D0 (right) -> C0 (none)
+```
+
+The contacts do not close or open together, so one middle press arrives as a
+brief left, then both, then a brief right. `CLICKTST` therefore counts left
+and right presses and never a middle one, which is exactly what a user sees:
+
+```
+button bits ever seen in a raw report: 03
+press counts   left=13  right=5  middle=0
+```
+
+Ruled out along the way: the **Logitech extension**, where a mouse sends a
+fourth byte when the middle button changes. This one does not. A discarded
+fourth byte would be counted as a resync, and there was **1 resync across
+653 packets** while the middle button was being pressed repeatedly.
+
+Also ruled out: **coaxing the mouse into Mouse Systems mode**, where the
+middle button is native and works (17 presses, cleanly, on a Keyspan).
+Holding the middle button at power-up gives Microsoft; holding the left
+button gives Microsoft; the stream contains `4D`, which is `'M'`, the
+Microsoft identification. Four opens on an FTDI, Microsoft every time.
+
+**So the fix has to be chord decoding** -- read left+right together as the
+middle button -- and it needs a short hold-back so the transitional states
+do not fire spurious left and right clicks, without swallowing genuine quick
+clicks.
+
+That is written and lives on the **`chord-wip` branch**. It is NOT on main,
+because it breaks the machine in a way not yet understood: `PS2TEST` dies
+with `Runtime error 200` inside its inline `int 11h`, a program that
+performs no division, while our `int11` handler is byte-identical to the
+working build. It fails the same way with `/2`, which makes the new logic
+inert -- so the fault is layout- or size-sensitive rather than the chord
+code itself. The branch message carries the bisect plan.
+
+**One real bug did come out of it, and it is fixed.** A crashed `PS2TEST`
+never reached its own cleanup, so it left a PS/2 callback registered into
+memory DOS then handed to the next program -- which the driver went on
+calling on every mouse report. That is why a single crash kept wedging the
+box and each experiment cost a power cycle: the crash was being inherited by
+an innocent program. `PS2TEST` now releases the callback from an `ExitProc`,
+which runs on a runtime error too, and `/S` confirms `handler=0000:0000`
+afterwards.
+
 ### The same mouse speaks either protocol, and nobody knows what picks it
 
 The mouse on the bench has been read as **Mouse Systems** by `MOUPROBE` and

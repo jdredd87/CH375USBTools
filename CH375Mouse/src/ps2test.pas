@@ -105,6 +105,36 @@ begin
   C2 := ((R.Flags and 1) = 0) and (R.AH = 0);
 end;
 
+{ ---------------------------------------------------------------------
+  HAND THE CALLBACK BACK EVEN IF WE DIE.
+
+  This test registers a far callback that lives in ITS OWN memory, and
+  tells the driver to start calling it.  The cleanup at the end of the
+  program undoes both -- and a program that crashes never reaches its end.
+
+  What that costs is not a leaked handle.  The driver goes on calling the
+  address on every mouse report, into memory DOS has since handed to
+  whatever ran next, so the crash is inherited by an innocent program and
+  the machine wedges.  That happened repeatedly while chasing an unrelated
+  fault, and each time it cost a power cycle and read as a NEW bug.
+
+  An exit handler runs on a runtime error too, which is the whole point.
+  --------------------------------------------------------------------- }
+var
+  PrevExit: Pointer;
+
+procedure Ps2Release; far;
+var R: Registers;
+begin
+  ExitProc := PrevExit;
+  FillChar(R, SizeOf(R), 0);            { C200h BH=0: stop reporting }
+  R.AH := $C2; R.AL := $00; R.BH := 0;
+  Intr($15, R);
+  FillChar(R, SizeOf(R), 0);            { C207h 0000:0000: forget us }
+  R.AH := $C2; R.AL := $07; R.ES := 0; R.BX := 0;
+  Intr($15, R);
+end;
+
 procedure Inject(Btn: Byte; Dx, Dy: Integer);
 var R: Registers;
 begin
@@ -203,6 +233,11 @@ begin
     Check('model is a PS/2 class the driver accepts (F8/FA/FC)',
           (Model = $F8) or (Model = $FA) or (Model = $FC));
   end;
+
+  { Armed BEFORE anything is registered, so there is no window in which a
+    crash could leave the driver calling us. }
+  PrevExit := ExitProc;
+  ExitProc := @Ps2Release;
 
   Equip := 0;
   asm
