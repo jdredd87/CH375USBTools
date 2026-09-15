@@ -36,7 +36,7 @@ this bus — see the rule in the collection's [top-level README](../README.md).
 | family | line setting | verified on hardware |
 |---|---|---|
 | **Keyspan (InnoSys)** `06CD:0121` | flat 34-byte block on its own bulk endpoint | **yes** — USR Courier at up to 38400, ANSI terminal, dial-out |
-| **FTDI** `0403:6001` | four vendor requests on endpoint 0 | **yes** — `AT`/`OK` at 9600, 19200, 38400 and 115200 |
+| **FTDI** `0403:6001` | four vendor requests on endpoint 0 | **yes** — see below |
 | CDC-ACM | `SET_LINE_CODING`, the standard | written, no hardware yet |
 | CP210x | vendor requests | written, no hardware yet |
 | PL2303, CH340/CH341 | — | recognised, not driven |
@@ -63,6 +63,28 @@ Keyspan never did:
   low bits, where the Keyspan wants the 16550 encoding — 8N1 is 8 on one and
   3 on the other. Copying one into the other gives a port that opens
   cleanly and reads garbage.
+
+#### What the FTDI was actually put through
+
+| test | result |
+|---|---|
+| `AT` -> `OK` | answered at **9600, 19200, 38400 and 115200** |
+| `ATI3` | product string returned intact |
+| `ATI4` full configuration dump, 9600 | **72 data packets**, all S-registers |
+| `ATI4` at 38400 | 20 packets, complete |
+| 58-character echo, 9600 | **byte-exact across 7 packets** |
+| 58-character echo, 38400 | **byte-exact across 4 packets** |
+
+The echo tests are the ones that matter, and they exist because the
+configuration dump looked like it had a fault. Its wrapped lines render as
+`S07=` then `60`, two digits where the register format is three, at every
+packet boundary -- nine times, far too regular to be chance. It reads
+exactly like one byte being eaten per boundary.
+
+It is not. A known 58-character string echoed back complete across seven
+packets, and a byte lost per boundary would have cost six of them. The
+dump's appearance is `SERTALK` printing packet by packet, not data loss.
+**A suspicious pattern is a reason to build an exact test, not a finding.**
 
 ### The tools find the configuration themselves now
 
