@@ -151,6 +151,8 @@ ser_proto: db   SP_MOUSESYS       ; which serial mouse protocol
 ser_undef: db   1                 ; 1 = the protocol is not settled yet
 ser_bad:  db    0                ; bytes thrown away with no report between
 ser_redec: dw   0                ; times the protocol was decided again
+raw_buf:  times 32 db 0          ; the last 32 bytes off the wire, for /S
+raw_idx:  db    0                ; where the next one goes
 ser_bits: db    7                 ; data bits the port is opened at
 ser_full: dw    0                ; drains that used the WHOLE budget, i.e.
                                  ; ticks that ran out of patience with bytes
@@ -779,6 +781,19 @@ sl_out:
 ser_feed:
         push    cx
         push    si
+
+        ; EVERY BYTE, kept in a 32-entry ring for /S.  A decoder tells you
+        ; what it made of the stream; only the raw bytes tell you what the
+        ; mouse actually sent, and the two differ exactly when something is
+        ; wrong.  Cheap enough to leave in: one store and a masked increment.
+        push    bx
+        mov     bl, [raw_idx]
+        mov     bh, 0
+        mov     [bx + raw_buf], al
+        inc     bl
+        and     bl, 31
+        mov     [raw_idx], bl
+        pop     bx
 
         ; WHICH PROTOCOL, decided from the byte itself.
         ;
@@ -2265,8 +2280,28 @@ st_psay:
         call    putdecw
         call    crlf
 
-        ; The last eight packets, raw.  Five bytes each: status, dx1, dy1,
-        ; dx2, dy2.
+        ; THE LAST 32 BYTES OFF THE WIRE, oldest first.  This answers the one
+        ; question the decoded counters cannot: what did the mouse actually
+        ; SEND?  It is here because a three-button mouse that comes up in
+        ; Microsoft mode reports two buttons, and the only way to tell "the
+        ; middle button sends nothing" from "the middle button sends
+        ; something we discard" is to look at the bytes.
+        mov     dx, msg_s_raw
+        call    puts
+        mov     cx, 32
+        mov     bl, [es:raw_idx]         ; oldest is where the next one goes
+stat_rawn:
+        mov     bh, 0
+        push    bx
+        mov     al, [es:bx + raw_buf]
+        call    puthex
+        mov     al, ' '
+        call    putc
+        pop     bx
+        inc     bl
+        and     bl, 31
+        loop    stat_rawn
+        call    crlf
 
         cmp     byte [es:ps2_on], 0
         je      short stat_nops2
@@ -4273,6 +4308,7 @@ msg_s_btn:     db '  buttons seen=$'
 msg_s_brep:    db '  button reports=$'
 msg_s_proto:   db '  protocol seen=$'
 msg_p_none:    db 'not settled -- no data has arrived yet$'
+msg_s_raw:     db '  last 32 bytes off the wire: $'
 msg_s_redec:   db '  protocol decided again=$'
 msg_s_sread:   db '  serial reads=$'
 msg_s_spkt:    db '  packets=$'

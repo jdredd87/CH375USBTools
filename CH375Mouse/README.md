@@ -33,7 +33,7 @@ DTR raised and decodes serial mouse packets instead of HID reports.
 | adapter | mouse | verified |
 |---|---|---|
 | Keyspan `06CD:0121` | Mouse Systems, 5 bytes, 3 buttons | `MOUSETST` 34/34, `PS2TEST` 25/25 with real packets, four consecutive runs, 0 resyncs |
-| FTDI FT232 `0403:6001` | Microsoft, 3 bytes, 2 buttons | `MOUSETST` 34/34, 255 reports, 0 resyncs — **on an older driver**; see below |
+| FTDI FT232 `0403:6001` | Microsoft, 3 bytes | `MOUSETST` 34/34, `PS2TEST` 24/24, 605 packets, 1 resync, 0 backlog |
 | Prolific PL2303 `067B:23A3` | **both, from the same mouse** | `MOUSETST` 34/34, `PS2TEST` 25/25 with 200 PS/2 packets, `CLICKTST` 1329 reports with matched press and release counts on all three buttons |
 
 Every one of them is read at **1200 8N1**. The mouse column is which
@@ -41,15 +41,20 @@ protocol was spoken, not how the port was opened -- and on the PL2303 it is
 both -- the same mouse has been read as each, and what selects it is not
 known; see below.
 
-**Only the FTDI row is not current.** It was measured before the serial path
-was reworked -- the stream detector, the re-decision, and
+All three rows are current, measured against this driver. An earlier note
+here said the FTDI row predated the serial rework -- the stream detector, the re-decision, and
 `SET_RETRY` moving to one caller all landed afterwards, and that last one
 alone changed `bytes resynced past` from 77 to 4. None of that is
-adapter-specific and all of it should be an improvement, but "should" is
-what this file has already spent hours on. It is recorded as verified
-against an older driver rather than carried forward, and re-running it is a
-two-minute check with that adapter plugged in: `MOUSETST` 34/34 and `/S`
-reporting the expected protocol with the re-decision count at 0.
+adapter-specific and all of it should have been an improvement -- but
+"should" is what this file has already spent hours on, so it was re-run
+rather than carried forward. It passed.
+
+One operational note from that swap, which cost a round of confusion:
+**changing the USB device left the CH375 itself unresponsive.**
+`CHECK_EXIST` returned `00` rather than `AA`, and a warm reboot did NOT fix
+it. A full power cycle did, and the adapter enumerated immediately
+afterwards. So "no CH375 at this address" right after a swap means cycle the
+power before suspecting the card.
 
 ### One framing reads both protocols
 
