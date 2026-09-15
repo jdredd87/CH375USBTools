@@ -121,6 +121,66 @@ of wasted USB transactions on the other -- four per tick at 145 Hz, in the
 timer interrupt, for an idle mouse. The drain stops on a read that contained
 no DATA, which is right for both.
 
+### OPEN FAULT: the box locked on the Keyspan with `/W`
+
+**Unresolved as of 2026-09-15, and recorded before it is understood**, because
+the box is wedged and the next session should not have to rediscover it.
+
+What happened, and only what happened. Two jobs ran back to back against a
+Keyspan `06CD:0121` with a serial mouse on a jiggler -- so the mouse was
+moving continuously and nobody was clicking it.
+
+| job | commands | result |
+|---|---|---|
+| `49a2` | `/U`, `/W`, `MOUSETST`, `PS2TEST` | **ok, 29.0s.** `PS2TEST` 25/25 with 186 real PS/2 packets |
+| `34d9` | `MOUSETST`, `PS2TEST`, `/S` | started, never returned. Box stopped polling |
+
+Seven minutes later the box was drawing 38 W with a capture showing job
+`49a2`'s output, the `[34d9] exec 3 cmd(s)` line, and nothing after it.
+Three stills four seconds apart were textually identical.
+
+**So the Keyspan mouse path itself passed** -- that is the one firm result
+here, and it is the check this file was asking for. What is not known is why
+the identical suite hung on the second run.
+
+Two hypotheses, neither tested, both cheap to settle:
+
+* **The BIOS tick stopped advancing.** The driver runs the PIT at 145 Hz and
+  chains to the old `INT 08h` every Nth tick to keep the BIOS clock right.
+  Both `MOUSETST` and `PS2TEST` suspend polling for their deterministic
+  checks. If a suspend or resume leaves the chaining off, the BIOS tick
+  freezes -- and every wait in these tools is `repeat until Now100 - T0 >= n`,
+  which then never finishes. This fits the evidence unusually well: a job
+  producing NO output at all is expected either way, because stdout is
+  redirected into `OUT.TXT` and only reaches the screen when the job ENDS.
+  `TICKCHK` and `CLKCHK` exist for exactly this question.
+* **The machine really is locked**, in the timer interrupt or in the CH375.
+
+Ruled out rather than assumed, both by reading the code:
+
+* A **stale PS/2 callback** was the first and most attractive theory -- the
+  suite's last checks are `C200h disable`, `no callbacks once disabled`,
+  `C200h re-enable`, which reads as exiting with reporting ON and a callback
+  into freed memory. It is wrong: `ps2test.pas` ends with `C2($00,0)` and
+  `C207h` with `ES:BX = 0:0`, and `i15_sethnd` stores `ES` into `ps2_hsg`
+  correctly, which `ps2_emit` then tests before calling.
+* **`SET_RETRY` left at `8F`**, the bug that has appeared five times in these
+  projects. All three families call `ser_poll_ready` on their success path,
+  and the bring-up calls it again afterwards as the belt to that braces.
+
+The experiment, in order, and each step is one job so a hang names itself:
+
+1. `/U`, then `/W`, then `TICKCHK` -- does the BIOS clock keep time with the
+   driver resident and a mouse moving?
+2. `PS2TEST`, then `TICKCHK` again, as a SEPARATE job. If the clock kept time
+   in step 1 and has stopped now, the first hypothesis is confirmed and the
+   fault is in the suspend/resume path, not in the serial code at all.
+3. Only if the clock is fine both times is this a lock-up worth hunting.
+
+Note that a power cut does not recover this box: POST halts at **"Press F1 to
+continue"** on the dead CMOS, so a cycle trades one unusable state for
+another. It needs a keypress at the machine.
+
 ### The mouse changes protocol while it is running
 
 This section used to record a gap: the Keyspan/Mouse-Systems pair had been
