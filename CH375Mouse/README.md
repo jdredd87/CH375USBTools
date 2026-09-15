@@ -139,22 +139,33 @@ Seven minutes later the box was drawing 38 W with a capture showing job
 `49a2`'s output, the `[34d9] exec 3 cmd(s)` line, and nothing after it.
 Three stills four seconds apart were textually identical.
 
+One thing that looks like evidence and is not: the job printed nothing to
+the screen. Every command's stdout is redirected into `OUT.TXT` by the
+generated batch and only reaches the console when the job ENDS, so silence
+is expected from a job that is merely unfinished. It says nothing about how
+far `MOUSETST` got.
+
 **So the Keyspan mouse path itself passed** -- that is the one firm result
 here, and it is the check this file was asking for. What is not known is why
 the identical suite hung on the second run.
 
 Two hypotheses, neither tested, both cheap to settle:
 
-* **The BIOS tick stopped advancing.** The driver runs the PIT at 145 Hz and
-  chains to the old `INT 08h` every Nth tick to keep the BIOS clock right.
-  Both `MOUSETST` and `PS2TEST` suspend polling for their deterministic
-  checks. If a suspend or resume leaves the chaining off, the BIOS tick
-  freezes -- and every wait in these tools is `repeat until Now100 - T0 >= n`,
-  which then never finishes. This fits the evidence unusually well: a job
-  producing NO output at all is expected either way, because stdout is
-  redirected into `OUT.TXT` and only reaches the screen when the job ENDS.
-  `TICKCHK` and `CLKCHK` exist for exactly this question.
+* **The BIOS tick stopped advancing.** Every wait in these tools is
+  `repeat until Now100 - T0 >= n`, so a frozen tick hangs them silently. The
+  obvious mechanism does NOT hold, though, and it was checked rather than
+  assumed: `int08` decrements `tick_c` and chains to `old08` **regardless of
+  `poll_off`**, so suspending the poll cannot by itself stop the BIOS clock.
+  That leaves this theory needing a mechanism it does not have. It stays on
+  the list only because `TICKCHK` answers it in one job, not because it is
+  the favourite.
 * **The machine really is locked**, in the timer interrupt or in the CH375.
+  With the first theory weakened this is now the likelier of the two, and the
+  jiggler is the thing that makes this run different from every earlier one:
+  the mouse moved CONTINUOUSLY for the whole job, where every previous test
+  had a hand on it that stopped between checks. A drain that is fine on
+  bursty input and unbounded on a stream that never stops would look exactly
+  like this.
 
 Ruled out rather than assumed, both by reading the code:
 
