@@ -35,7 +35,7 @@ this bus — see the rule in the collection's [top-level README](../README.md).
 
 | family | line setting | verified on hardware |
 |---|---|---|
-| **Keyspan (InnoSys)** `06CD:0121` | flat 34-byte block on its own bulk endpoint | **yes** — USR Courier at up to 38400, ANSI terminal, dial-out |
+| **Keyspan (InnoSys)** `06CD:0121` | flat 34-byte block on its own bulk endpoint | **yes** — see below |
 | **FTDI** `0403:6001` | four vendor requests on endpoint 0 | **yes** — see below |
 | CDC-ACM | `SET_LINE_CODING`, the standard | written, no hardware yet |
 | CP210x | vendor requests | written, no hardware yet |
@@ -63,6 +63,30 @@ Keyspan never did:
   low bits, where the Keyspan wants the 16550 encoding — 8N1 is 8 on one and
   3 on the other. Copying one into the other gives a port that opens
   cleanly and reads garbage.
+
+#### Both families, the same battery
+
+Which is the point of there being a shared interface at all: if one family
+passes a test the other cannot, the interface is not doing its job.
+
+| test | Keyspan | FTDI |
+|---|---|---|
+| `AT` -> `OK` | 9600, 19200, 38400, 115200 | 9600, 19200, 38400, 115200 |
+| 58-character echo | **byte-exact**, 3 packets | **byte-exact**, 7 packets |
+| `ATI4` configuration dump | 35 packets | 72 packets |
+| configuration found with no `/C=` | yes, index 1 of 2 | yes, index 0 of 1 |
+| ANSI terminal, dial-out | yes | not exercised |
+
+The packet counts differ because the two parts batch differently -- the same
+58 characters arrive in three packets on one and seven on the other -- which
+is exactly the sort of thing `SerBatchFor` exists to absorb and a caller
+should never have to know.
+
+The Keyspan row was re-measured after the configuration walk changed, not
+carried forward. That change altered how every tool picks a configuration
+and the Keyspan is the awkward case it was written for: two configurations,
+with the first putting interrupt endpoints where the data should be. It had
+been reasoned about and not tested, which is not the same thing.
 
 #### What the FTDI was actually put through
 
