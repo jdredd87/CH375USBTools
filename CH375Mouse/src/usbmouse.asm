@@ -760,6 +760,21 @@ ser_feed:
         push    cx
         push    si
 
+        ; WHICH PROTOCOL, decided from the byte itself.
+        ;
+        ; At 8N1 a Microsoft header arrives as C0-FFh (bit 6 set, bit 7 put
+        ; there by the stop bit) and a Mouse Systems header as 80-87h.  The
+        ; ranges do not overlap, so the first header seen settles it and
+        ; every one after that confirms it.
+        cmp     byte [ser_n], 0
+        jne     short sf_inpkt
+        mov     ah, al
+        and     ah, 0xC0
+        cmp     ah, 0xC0
+        jne     short sf_notms
+        mov     byte [ser_proto], SP_MICROSOFT
+sf_notms:
+sf_inpkt:
         cmp     byte [ser_proto], SP_MICROSOFT
         je      ms_feed
 
@@ -852,6 +867,9 @@ sf_out:
 ; be known rather than guessed.
 ; --------------------------------------------------------------------------
 ms_feed:
+        ; Read at eight bits, so every byte carries the stop bit in bit 7.
+        ; Strip it and the protocol is its documented self again.
+        and     al, 0x7F
         test    al, 0x40
         je      short ms_body
         ; A header always starts a fresh report.
@@ -2521,48 +2539,31 @@ bu_setcfg_ok:
         cmp     byte [ser_mode], SM_HID
         je      short bu_nothid
 
-        ; ASK THE MOUSE WHICH IT IS, at 7N1 first.
+        ; OPEN AT 8N1 AND LET THE STREAM SAY WHICH PROTOCOL IT IS.
         ;
-        ; A Microsoft mouse announces itself with 'M' when its power comes
-        ; up, and needs seven data bits.  A Mouse Systems mouse announces
-        ; nothing and needs eight.  Opening at the wrong width does not
-        ; merely mislabel the mouse, it mangles every byte -- so this is
-        ; decided before the framing is committed, not inferred from the
-        ; stream afterwards.
+        ; The previous version opened at 7N1 and listened for the 'M' a
+        ; Microsoft mouse sends at power-up.  Two things were wrong with it.
         ;
-        ; Seven first because it is the one with an answer: silence at 7N1
-        ; is a real result (Mouse Systems), where silence at 8N1 would be
-        ; ambiguous.
-        mov     byte [ser_bits], 7
-        call    ser_open
-        jc      short bu_fail
-
-        ; SET_RETRY 00 BEFORE THE SNIFF, not after it.
+        ; The announcement is not reliable.  IdentifyId scanned the whole
+        ; power-up burst for 'M', and a mouse being MOVED during that window
+        ; is sending movement bytes -- one of which was 4Dh.  A Mouse
+        ; Systems mouse was identified as Microsoft on exactly that.
         ;
-        ; The sniff polls an endpoint, and a poll is exactly what 8F ruins:
-        ; with NAKs retried for ever a read on a quiet line never returns,
-        ; it times out.  Every iteration of the listen loop then costs a
-        ; full timeout and hears nothing, so a Microsoft mouse that said 'M'
-        ; perfectly clearly is recorded as silent and gets opened at the
-        ; wrong width.
+        ; And 7N1 is not needed.  A Microsoft mouse sends seven data bits,
+        ; so reading it at EIGHT captures the stop bit as bit 7 and every
+        ; byte arrives with 80h set: the 40h header reads as C0h and the
+        ; 00-3Fh bodies as 80-BFh.  Framing still works, because the
+        ; receiver then takes the idle line as its stop bit.
         ;
-        ; This is the FIFTH appearance of this bug across these projects and
-        ; the second in this file, both times because a new piece of code
-        ; polls an endpoint somewhere the existing SET_RETRY did not cover.
-        mov     al, CMD_SET_RETRY
-        call    ch_cmd
-        mov     al, 0x25
-        call    ch_wr
-        xor     al, al
-        call    ch_wr
-
-        call    ser_sniff                ; CF clear if it said 'M'
-        jc      short bu_notms
-        mov     byte [ser_proto], SP_MICROSOFT
-        jmp     short bu_seropen
-bu_notms:
-        ; Nothing, so take it as Mouse Systems and re-open at eight bits.
-        mov     byte [ser_proto], SP_MOUSESYS
+        ; That is a gift, because at 8N1 the two protocols occupy ranges
+        ; that do not overlap:
+        ;
+        ;   Microsoft      header C0-FFh, every THREE bytes, bodies 80-BFh
+        ;   Mouse Systems  header 80-87h, every FIVE bytes
+        ;
+        ; So one framing reads both, the decoder tells them apart from the
+        ; data, and nothing depends on an announcement that may never come
+        ; or may arrive by accident.
         mov     byte [ser_bits], 8
         call    ser_open
         jc      short bu_fail
@@ -2772,6 +2773,237 @@ pc_serial:
         ret
 pc_fail:
         stc
+        ret
+
+; A vendor write: bmRequestType 40h, bRequest 01h, BX = wValue, DX = wIndex.
+ser_vwr:
+        push    ax
+        mov     al, 0x01
+        call    ser_ctrl
+        pop     ax
+        ret
+
+; A vendor read.  The ANSWER IS DISCARDED and the call still matters -- the
+; PL2303 will not configure unless these happen, which is the whole reason
+; a list of reads nobody looks at is in the initialisation.
+ser_vrd:
+        push    ax
+        push    cx
+        mov     [cs:sc_req], byte 0x01
+        mov     [cs:sc_val], bx
+        mov     [cs:sc_idx], dx
+        mov     al, CMD_WR_USB_DATA7
+        call    ch_cmd
+        mov     al, 8
+        call    ch_wr
+        mov     al, 0xC0                 ; IN, vendor, device
+        call    ch_wr
+        mov     al, 0x01
+        call    ch_wr
+        mov     al, [cs:sc_val]
+        call    ch_wr
+        mov     al, [cs:sc_val+1]
+        call    ch_wr
+        mov     al, [cs:sc_idx]
+        call    ch_wr
+        mov     al, [cs:sc_idx+1]
+        call    ch_wr
+        mov     al, 1                    ; wLength = 1
+        call    ch_wr
+        xor     al, al
+        call    ch_wr
+        mov     al, CMD_SET_ENDP6
+        call    ch_cmd
+        mov     al, 0x80
+        call    ch_wr
+        mov     al, CMD_ISSUE_TOKEN
+        call    ch_cmd
+        mov     al, PID_SETUP
+        call    ch_wr
+        mov     cx, 0xFFFF
+        call    ch_wait
+        ; Whatever comes back, drain it and move on.
+        mov     al, CMD_SET_ENDP6
+        call    ch_cmd
+        mov     al, 0xC0
+        call    ch_wr
+        mov     al, CMD_ISSUE_TOKEN
+        call    ch_cmd
+        mov     al, PID_IN
+        call    ch_wr
+        mov     cx, 0xFFFF
+        call    ch_wait
+        push    cs
+        pop     es
+        mov     di, ser_buf
+        mov     bl, 8
+        call    ch_read
+        pop     cx
+        pop     ax
+        clc
+        ret
+
+; The CDC line requests, shared by PL2303 and anything else that uses them.
+ser_cdcline:
+        push    cs
+        pop     ds
+        push    cs
+        pop     es
+        mov     di, ser_msg
+        mov     word [di], 1200          ; 1200 baud, little-endian LongInt
+        mov     word [di+2], 0
+        mov     byte [di+4], 0           ; 1 stop bit
+        mov     byte [di+5], 0           ; no parity
+        mov     al, [ser_bits]
+        mov     [di+6], al
+        mov     al, CMD_WR_USB_DATA7
+        call    ch_cmd
+        mov     al, 8
+        call    ch_wr
+        mov     al, 0x21                 ; OUT, class, interface
+        call    ch_wr
+        mov     al, 0x20                 ; SET_LINE_CODING
+        call    ch_wr
+        xor     al, al
+        call    ch_wr
+        call    ch_wr
+        call    ch_wr
+        call    ch_wr
+        mov     al, 7                    ; wLength = 7
+        call    ch_wr
+        xor     al, al
+        call    ch_wr
+        mov     al, CMD_SET_ENDP6
+        call    ch_cmd
+        mov     al, 0x80
+        call    ch_wr
+        mov     al, CMD_ISSUE_TOKEN
+        call    ch_cmd
+        mov     al, PID_SETUP
+        call    ch_wr
+        mov     cx, 0xFFFF
+        call    ch_wait
+        jc      short scl_bad
+        cmp     al, INT_SUCCESS
+        jne     short scl_bad
+        ; the seven data bytes
+        mov     al, CMD_WR_USB_DATA7
+        call    ch_cmd
+        mov     al, 7
+        call    ch_wr
+        mov     si, ser_msg
+        mov     cx, 7
+scl_byte:
+        lodsb
+        call    ch_wr
+        loop    scl_byte
+
+        ; THE DATA STAGE GOES THROUGH ENDP7, NOT ENDP6.
+        ;
+        ; ENDP6 carries the toggle for endpoint 0's IN direction and ENDP7
+        ; the OUT direction, and this is an OUT.  Setting the wrong one does
+        ; not fail the transfer -- the chip reports success, the device
+        ; ignores a packet whose toggle it did not expect, and the port
+        ; keeps whatever settings it already had.
+        ;
+        ; Which is exactly how it presented: the line coding silently did
+        ; not take, the port stayed at its default rate, and a 1200-baud
+        ; mouse read at that rate produced a stream of 00s with an
+        ; occasional 80 -- no headers at all, and 545 bytes discarded in one
+        ; run.  It reads as a dead mouse or a wrong protocol, which is two
+        ; wrong places to look.
+        ;
+        ; The data stage also starts on DATA1 by spec, and so does the
+        ; status stage; the chip infers neither from the SETUP before it.
+        mov     al, CMD_SET_ENDP7
+        call    ch_cmd
+        mov     al, 0xC0
+        call    ch_wr
+        mov     al, CMD_ISSUE_TOKEN
+        call    ch_cmd
+        mov     al, PID_OUT
+        call    ch_wr
+        mov     cx, 0xFFFF
+        call    ch_wait
+        jc      short scl_bad
+        cmp     al, INT_SUCCESS
+        jne     short scl_bad
+        ; status stage: a zero-length IN, DATA1
+        mov     al, CMD_SET_ENDP6
+        call    ch_cmd
+        mov     al, 0xC0
+        call    ch_wr
+        mov     al, CMD_ISSUE_TOKEN
+        call    ch_cmd
+        mov     al, PID_IN
+        call    ch_wr
+        mov     cx, 0xFFFF
+        call    ch_wait
+
+        ; SET_CONTROL_LINE_STATE: DTR and RTS, which is the mouse's power.
+        ; Dropped and raised, so the mouse sees a power-on.
+        mov     al, 0x22
+        xor     bx, bx
+        xor     dx, dx
+        call    ser_clc
+        mov     cx, 400
+        call    delay_ms
+        mov     al, 0x22
+        mov     bx, 0x0003
+        xor     dx, dx
+        call    ser_clc
+        mov     cx, 300
+        call    delay_ms
+        clc
+        ret
+scl_bad:
+        stc
+        ret
+
+; A class request to the interface with no data stage.
+ser_clc:
+        mov     [cs:sc_req], al
+        mov     [cs:sc_val], bx
+        mov     [cs:sc_idx], dx
+        mov     al, CMD_WR_USB_DATA7
+        call    ch_cmd
+        mov     al, 8
+        call    ch_wr
+        mov     al, 0x21                 ; OUT, class, interface
+        call    ch_wr
+        mov     al, [cs:sc_req]
+        call    ch_wr
+        mov     al, [cs:sc_val]
+        call    ch_wr
+        mov     al, [cs:sc_val+1]
+        call    ch_wr
+        mov     al, [cs:sc_idx]
+        call    ch_wr
+        mov     al, [cs:sc_idx+1]
+        call    ch_wr
+        xor     al, al
+        call    ch_wr
+        call    ch_wr
+        mov     al, CMD_SET_ENDP6
+        call    ch_cmd
+        mov     al, 0x80
+        call    ch_wr
+        mov     al, CMD_ISSUE_TOKEN
+        call    ch_cmd
+        mov     al, PID_SETUP
+        call    ch_wr
+        mov     cx, 0xFFFF
+        call    ch_wait
+        mov     al, CMD_SET_ENDP6
+        call    ch_cmd
+        mov     al, 0xC0
+        call    ch_wr
+        mov     al, CMD_ISSUE_TOKEN
+        call    ch_cmd
+        mov     al, PID_IN
+        call    ch_wr
+        mov     cx, 0xFFFF
+        call    ch_wait
         ret
 
 ; --------------------------------------------------------------------------
@@ -3008,7 +3240,11 @@ ser_open:
 so_gen_t:
         cmp     word [ser_vid], 0x0403
         je      short so_ftdi_t
+        cmp     word [ser_vid], 0x067B
+        je      short so_pl_t
         jmp     so_generic
+so_pl_t:
+        jmp     so_pl2303
 so_ftdi_t:
         jmp     so_ftdi
 so_keyspan:
@@ -3180,6 +3416,58 @@ so_ftdi_no:
         stc
         ret
 
+; --------------------------------------------------------------------------
+; Prolific PL2303.  Its line settings are the CDC ones, so the only new
+; part is a vendor initialisation sequence taken from the Linux driver --
+; a fixed list whose values mostly have no published meaning and whose
+; reads have their answers thrown away.  It looks pointless and is not:
+; the part will not configure without them.
+; --------------------------------------------------------------------------
+so_pl2303:
+        mov     al, 0x01
+        mov     bx, 0x8484
+        xor     dx, dx
+        call    ser_vrd
+        mov     bx, 0x0404
+        xor     dx, dx
+        call    ser_vwr
+        mov     bx, 0x8484
+        call    ser_vrd
+        mov     bx, 0x8383
+        call    ser_vrd
+        mov     bx, 0x8484
+        call    ser_vrd
+        mov     bx, 0x0404
+        mov     dx, 1
+        call    ser_vwr
+        mov     bx, 0x8484
+        xor     dx, dx
+        call    ser_vrd
+        mov     bx, 0x8383
+        call    ser_vrd
+        xor     bx, bx
+        mov     dx, 1
+        call    ser_vwr
+        mov     bx, 1
+        xor     dx, dx
+        call    ser_vwr
+        ; 44h on the HX family, 24h on older silicon, told apart by
+        ; bcdDevice.  The wrong one does not fail -- it configures a chip
+        ; that then will not pass data.
+        mov     bx, 2
+        mov     ax, [desc_buf + 12]
+        cmp     ax, 0x0300
+        jb      short so_pl_old
+        mov     dx, 0x0044
+        jmp     short so_pl_last
+so_pl_old:
+        mov     dx, 0x0024
+so_pl_last:
+        call    ser_vwr
+        ; From here it is CDC, byte for byte.
+        call    ser_cdcline
+        ret
+
 so_generic:
         ; Recognised but not opened.  Saying so beats pretending: an adapter
         ; whose port was never enabled delivers nothing, and "no bytes" is
@@ -3214,7 +3502,7 @@ ser_detect:
         cmp     ax, 0x10C4                   ; Silicon Labs CP210x
         je      short sd_generic
         cmp     ax, 0x067B                   ; Prolific
-        je      short sd_generic
+        je      short sd_generic             ; no per-packet header
         cmp     ax, 0x1A86                   ; WCH CH340/CH341
         je      short sd_generic
         stc

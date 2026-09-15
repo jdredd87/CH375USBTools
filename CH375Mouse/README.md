@@ -34,6 +34,36 @@ DTR raised and decodes serial mouse packets instead of HID reports.
 |---|---|---|
 | Keyspan `06CD:0121` | Mouse Systems, 1200 8N1, 5 bytes, 3 buttons | `MOUSETST` 34/34, `PS2TEST` 25/25 -- but **before** the protocol sniff was added; see below |
 | FTDI FT232 `0403:6001` | Microsoft, 1200 7N1, 3 bytes, 2 buttons | `MOUSETST` 34/34, 255 reports, 0 resyncs |
+| Prolific PL2303 `067B:23A3` | Mouse Systems | `MOUSETST` 34/34, `PS2TEST` 25/25 with 240 PS/2 packets |
+
+### One framing reads both protocols
+
+The driver used to open at 7N1, listen about a second for the `'M'` a
+Microsoft mouse sends at power-up, and fall back to 8N1 on silence. That is
+gone, and both halves of it were wrong.
+
+**The announcement is not reliable.** The identification scanned the whole
+power-up burst for `'M'`, and a mouse being *moved* during that window is
+sending movement bytes -- one of which was `4Dh`. A Mouse Systems mouse was
+confidently identified as Microsoft on exactly that.
+
+**And 7N1 was never needed.** A Microsoft mouse sends seven data bits, so
+reading it at EIGHT captures the stop bit as bit 7 and every byte arrives
+with `80h` set: the `40h` header reads as `C0h`, the `00-3Fh` bodies as
+`80-BFh`. Framing still works, because the receiver then takes the idle line
+as its stop bit.
+
+That is a gift, because at 8N1 the two protocols occupy ranges that do not
+overlap:
+
+| | header | packet |
+|---|---|---|
+| Microsoft at 8N1 | `C0-FF` | 3 bytes, bodies `80-BF` |
+| Mouse Systems | `80-87` | 5 bytes |
+
+So one framing reads both, the decoder tells them apart from the data, and
+nothing depends on an announcement that may never come or may arrive by
+accident.
 
 **The driver works out both, and they are decided at different moments.**
 Which ADAPTER it is comes from the USB ID, before the port exists. Which
