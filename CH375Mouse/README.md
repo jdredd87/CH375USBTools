@@ -238,19 +238,29 @@ middle button -- and it needs a short hold-back so the transitional states
 do not fire spurious left and right clicks, without swallowing genuine quick
 clicks.
 
-**This is parked, by choice, and is not pending work.** The bench mouse is
-an old three-button one being retired for an ordinary two-button mouse, so
-nobody needs the chord decoded. The branch stays because the diagnosis above
-is worth keeping and the code may be useful to someone with a mouse that
-still needs it.
-
-It lives on the **`chord-wip` branch** and is NOT on main, because it breaks
-the machine in a way that was never understood: `PS2TEST` dies
+**It was written, it did not work, and it has been deleted.** The bench
+mouse is an old three-button one being retired for an ordinary two-button
+mouse, so nothing needs the chord decoded -- and what was written broke the
+machine in a way that was never understood: `PS2TEST` dies
 with `Runtime error 200` inside its inline `int 11h`, a program that
 performs no division, while our `int11` handler is byte-identical to the
 working build. It fails the same way with `/2`, which makes the new logic
 inert -- so the fault is layout- or size-sensitive rather than the chord
-code itself. The branch message carries the bisect plan.
+code itself.
+
+The code is gone rather than parked on a branch, deliberately: a driver
+build that wedges the machine is a trap for anyone who checks it out, and
+its recovery path was poor anyway -- bisecting a layout-sensitive fault
+nobody understood, against rewriting ninety lines from the description
+above. **What was worth keeping is this section, not the assembly.**
+
+If a mouse ever needs it, the shape of the fix is: read `L+R` as middle,
+hold a single button back for about 55 ms -- longer than the gap between
+two packets, so the transition coalesces -- and make a release arriving
+while a press is still held back emit the press immediately and queue the
+release behind it, or quick clicks vanish. Put the emit INSIDE the
+`in_poll` guard in `poll_mouse`; outside it, a tick arriving mid-drain
+emits a report on top of one already in flight.
 
 **One real bug did come out of it, and it is fixed.** A crashed `PS2TEST`
 never reached its own cleanup, so it left a PS/2 callback registered into
