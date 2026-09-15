@@ -32,7 +32,7 @@ DTR raised and decodes serial mouse packets instead of HID reports.
 
 | adapter | mouse | verified |
 |---|---|---|
-| Keyspan `06CD:0121` | Mouse Systems, 5 bytes, 3 buttons | `MOUSETST` 34/34, `PS2TEST` 25/25 — **on an older driver**; see below |
+| Keyspan `06CD:0121` | Mouse Systems, 5 bytes, 3 buttons | `MOUSETST` 34/34, `PS2TEST` 25/25 with real packets, four consecutive runs, 0 resyncs |
 | FTDI FT232 `0403:6001` | Microsoft, 3 bytes, 2 buttons | `MOUSETST` 34/34, 255 reports, 0 resyncs — **on an older driver**; see below |
 | Prolific PL2303 `067B:23A3` | **both, from the same mouse** | `MOUSETST` 34/34, `PS2TEST` 25/25 with 200 PS/2 packets, `CLICKTST` 1329 reports with matched press and release counts on all three buttons |
 
@@ -40,14 +40,14 @@ Every one of them is read at **1200 8N1**. The mouse column is which
 protocol was spoken, not how the port was opened -- and on the PL2303 it is
 both, because that mouse changes protocol when the middle button is pressed.
 
-**Only the PL2303 row is current.** The other two were measured before the
-serial path was reworked -- the stream detector, the re-decision, and
+**Only the FTDI row is not current.** It was measured before the serial path
+was reworked -- the stream detector, the re-decision, and
 `SET_RETRY` moving to one caller all landed afterwards, and that last one
 alone changed `bytes resynced past` from 77 to 4. None of that is
 adapter-specific and all of it should be an improvement, but "should" is
-what this file has already spent hours on. They are recorded as verified
-against an older driver rather than carried forward, and re-running them is
-a two-minute check with each adapter plugged in: `MOUSETST` 34/34 and `/S`
+what this file has already spent hours on. It is recorded as verified
+against an older driver rather than carried forward, and re-running it is a
+two-minute check with that adapter plugged in: `MOUSETST` 34/34 and `/S`
 reporting the expected protocol with the re-decision count at 0.
 
 ### One framing reads both protocols
