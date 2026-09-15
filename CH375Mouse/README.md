@@ -159,13 +159,30 @@ Two hypotheses, neither tested, both cheap to settle:
   That leaves this theory needing a mechanism it does not have. It stays on
   the list only because `TICKCHK` answers it in one job, not because it is
   the favourite.
-* **The machine really is locked**, in the timer interrupt or in the CH375.
-  With the first theory weakened this is now the likelier of the two, and the
-  jiggler is the thing that makes this run different from every earlier one:
-  the mouse moved CONTINUOUSLY for the whole job, where every previous test
-  had a hand on it that stopped between checks. A drain that is fine on
-  bursty input and unbounded on a stream that never stops would look exactly
-  like this.
+* **Interrupt livelock, with the jiggler as the thing that made this run
+  different.** The mouse moved CONTINUOUSLY for the whole job, where every
+  earlier test had a hand on it that stopped between checks. The drain is
+  NOT unbounded -- `ser_bud` is 4 reads and `dec`/`jne` enforces it, checked
+  -- so this is not a spin. It is arithmetic:
+
+  | | |
+  |---|---|
+  | tick rate at the default `/R=8` | 18.2 x 8 = **145 Hz** |
+  | reads per tick when data keeps arriving | up to **4** |
+  | what this CH375 sustains | **110-138 packets/s** |
+
+  One poll per tick already sits at the chip's transaction ceiling. A mouse
+  that never stops moving means the drain rarely stops at the first read, so
+  the ISR gets longer exactly when it is running most often. If the handler
+  stops fitting inside 6.9 ms, the machine spends its life in the timer
+  interrupt: DOS is starved rather than crashed, which from here is
+  indistinguishable from a lock. A resting hand between checks is what kept
+  every earlier run under that line.
+
+  This one has a cheap decisive test that needs no code change: **`/R=2`**
+  (36 Hz) with the jiggler still running. If a slower tick survives what
+  145 Hz did not, it is livelock, and the fix is a rate the chip can
+  actually serve rather than a faster one.
 
 Ruled out rather than assumed, both by reading the code:
 
@@ -186,7 +203,9 @@ The experiment, in order, and each step is one job so a hang names itself:
 2. `PS2TEST`, then `TICKCHK` again, as a SEPARATE job. If the clock kept time
    in step 1 and has stopped now, the first hypothesis is confirmed and the
    fault is in the suspend/resume path, not in the serial code at all.
-3. Only if the clock is fine both times is this a lock-up worth hunting.
+3. Then `/U`, `/W /R=2`, and the same suite that hung, with the jiggler
+   still moving. Surviving at 36 Hz where 145 Hz hung is the livelock
+   result; hanging again at 36 Hz rules it out and the CH375 side is next.
 
 Note that a power cut does not recover this box: POST halts at **"Press F1 to
 continue"** on the dead CMOS, so a cycle trades one unusable state for
