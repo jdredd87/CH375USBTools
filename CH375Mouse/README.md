@@ -121,122 +121,77 @@ of wasted USB transactions on the other -- four per tick at 145 Hz, in the
 timer interrupt, for an idle mouse. The drain stops on a read that contained
 no DATA, which is right for both.
 
-### OPEN FAULT: the box locked on the Keyspan with `/W`
+### The box locked on the Keyspan, and it was a BAD USB CABLE
 
-**Unresolved as of 2026-09-15, and recorded before it is understood**, because
-the box is wedged and the next session should not have to rediscover it.
+Resolved 2026-09-15. Kept in full because the three software theories it
+generated were all plausible, all wrong, and each took real effort to kill --
+and because the one measurement that would have pointed at hardware
+immediately was available the whole time.
 
-What happened, and only what happened. Two jobs ran back to back against a
-Keyspan `06CD:0121` with a serial mouse on a jiggler -- so the mouse was
-moving continuously and nobody was clicking it.
+What happened. Two jobs ran back to back against a Keyspan `06CD:0121` with a
+serial mouse on a jiggler, so the mouse moved continuously and nobody clicked
+it.
 
 | job | commands | result |
 |---|---|---|
 | `49a2` | `/U`, `/W`, `MOUSETST`, `PS2TEST` | **ok, 29.0s.** `PS2TEST` 25/25 with 186 real PS/2 packets |
 | `34d9` | `MOUSETST`, `PS2TEST`, `/S` | started, never returned. Box stopped polling |
 
-Seven minutes later the box was drawing 38 W with a capture showing job
-`49a2`'s output, the `[34d9] exec 3 cmd(s)` line, and nothing after it.
-Three stills four seconds apart were textually identical.
+**The evidence that mattered was already on the table and was read as
+software.** After the lock-up the box was power-cycled. It came back
+perfectly -- packet driver, agent, network -- and the CH375 itself was fine,
+`CHECK_EXIST` returning `AA` and IC version `B7`. But `TEST_CONNECT` returned
+`16`, device disconnected, across two cold boots, and `USBMOUSE`'s full
+bring-up found nothing either. **The adapter was electrically absent.** A
+replacement USB cable brought it straight back.
 
-One thing that looks like evidence and is not: the job printed nothing to
-the screen. Every command's stdout is redirected into `OUT.TXT` by the
-generated batch and only reaches the console when the job ENDS, so silence
-is expected from a job that is merely unfinished. It says nothing about how
-far `MOUSETST` got.
+The confirmation, with the new cable and nothing else changed -- the same job
+that hung, run four times:
 
-**So the Keyspan mouse path itself passed** -- that is the one firm result
-here, and it is the check this file was asking for. What is not known is why
-the identical suite hung on the second run.
+| run | `MOUSETST` | `PS2TEST` | resyncs | backlog | re-decisions |
+|---|---|---|---|---|---|
+| 1 | -- | 25/25, 8 real packets | 0 | 0 | 0 |
+| 2 | 34/34 | 25/25 | 0 | 0 | 0 |
+| 3 | 34/34 | 25/25 | 0 | 0 | 0 |
+| 4 | 34/34 | 25/25 | 0 | 0 | 0 |
 
-Two hypotheses, neither tested, both cheap to settle:
+Three theories died on the way, and the order is the lesson.
 
-* **The BIOS tick stopped advancing.** Every wait in these tools is
-  `repeat until Now100 - T0 >= n`, so a frozen tick hangs them silently. The
-  obvious mechanism does NOT hold, though, and it was checked rather than
-  assumed: `int08` decrements `tick_c` and chains to `old08` **regardless of
-  `poll_off`**, so suspending the poll cannot by itself stop the BIOS clock.
-  That leaves this theory needing a mechanism it does not have. It stays on
-  the list only because `TICKCHK` answers it in one job, not because it is
-  the favourite.
-* **Interrupt livelock, with the jiggler as the thing that made this run
-  different.** The mouse moved CONTINUOUSLY for the whole job, where every
-  earlier test had a hand on it that stopped between checks. The drain is
-  NOT unbounded -- `ser_bud` is 4 reads and `dec`/`jne` enforces it, checked
-  -- so this is not a spin. It is arithmetic:
-
-  | | |
-  |---|---|
-  | tick rate at the default `/R=8` | 18.2 x 8 = **145 Hz** |
-  | reads per tick when data keeps arriving | up to **4** |
-  | what this CH375 sustains | **110-138 packets/s** |
-
-  One poll per tick already sits at the chip's transaction ceiling. A mouse
-  that never stops moving means the drain rarely stops at the first read, so
-  the ISR gets longer exactly when it is running most often. If the handler
-  stops fitting inside 6.9 ms, the machine spends its life in the timer
-  interrupt: DOS is starved rather than crashed, which from here is
-  indistinguishable from a lock. A resting hand between checks is what kept
-  every earlier run under that line.
-
-  This one has a cheap decisive test that needs no code change: **`/R=2`**
-  (36 Hz) with the jiggler still running. If a slower tick survives what
-  145 Hz did not, it is livelock, and the fix is a rate the chip can
-  actually serve rather than a faster one.
-
-Ruled out rather than assumed, both by reading the code:
-
-* A **stale PS/2 callback** was the first and most attractive theory -- the
-  suite's last checks are `C200h disable`, `no callbacks once disabled`,
-  `C200h re-enable`, which reads as exiting with reporting ON and a callback
-  into freed memory. It is wrong: `ps2test.pas` ends with `C2($00,0)` and
-  `C207h` with `ES:BX = 0:0`, and `i15_sethnd` stores `ES` into `ps2_hsg`
-  correctly, which `ps2_emit` then tests before calling.
+* **A stale PS/2 callback.** The most attractive by far: `PS2TEST`'s last
+  three checks are `C200h disable`, `no callbacks once disabled`, `C200h
+  re-enable`, which reads as exiting with reporting ON and a callback into
+  freed memory -- and the driver would then `far call` into whatever loaded
+  next. It is wrong. `ps2test.pas` ends with `C2($00,0)` and `C207h` with
+  `ES:BX = 0:0`, and `i15_sethnd` stores `ES` into `ps2_hsg` correctly, which
+  `ps2_emit` tests before calling. Killed by reading the source.
 * **`SET_RETRY` left at `8F`**, the bug that has appeared five times in these
-  projects. All three families call `ser_poll_ready` on their success path,
-  and the bring-up calls it again afterwards as the belt to that braces.
+  projects and would have been a sixth. All three families call
+  `ser_poll_ready` on their success path and the bring-up calls it again
+  afterwards. Killed by reading the source.
+* **The BIOS tick stopped advancing.** Every wait in these tools is `repeat
+  until Now100 - T0 >= n`, so a frozen tick hangs them silently. Weakened by
+  reading -- `int08` chains to `old08` regardless of `poll_off` -- and then
+  **killed by measurement**: with the driver resident, `TICKCHK` reads `INT
+  08h` and `INT 1Ch` at 18 Hz, twice, exactly as with no driver loaded.
+* **Interrupt livelock** was the last one standing, and it had real
+  arithmetic behind it: 145 Hz ticks, up to 4 reads per drain, against a chip
+  that sustains 110-138 packets/s. It was also wrong, and the number that
+  killed it is worth keeping. **A jiggler is not a fast mouse.** It produced
+  110 bytes in 12 seconds against 982 for a human hand -- about a NINTH the
+  data rate, with deltas of one or two counts. The hang happened under
+  unusually LOW traffic, which is the opposite of what livelock needs.
 
-**Then the adapter vanished from the bus, and that may be the answer.**
-After the lock-up the box was power-cycled twice. It boots perfectly --
-packet driver, agent, network -- and the CH375 itself is fine: `CHECK_EXIST`
-returns `AA` and the IC version reads `B7`. But `TEST_CONNECT` returns `16`,
-device disconnected, and `USBMOUSE`'s full bring-up finds nothing either. The
-device is electrically absent.
+**The lesson is the order, not the theories.** Every one of those was
+reasoned from the code, and the code was the wrong place to be looking. The
+question "is the device still on the bus?" costs one `CHDIAG` run and was
+never asked until three software explanations had been built and demolished.
+On a machine where a plug can fail, `TEST_CONNECT` belongs at the TOP of the
+list, before any reasoning about interrupt handlers.
 
-That is a better theory than livelock: **the Keyspan fell off the bus during
-the job, and the driver hung handling the disconnect** rather than starving
-the machine. It explains the timing -- a suite that passed once and hung on
-an identical second run -- far more naturally than a load threshold does.
-
-It cannot be attributed cleanly, and saying so matters more than having an
-answer. Two hard power cuts happened between the hang and the diagnosis, and
-either could have dropped the adapter by itself. So the absence is evidence
-that a disconnect is PLAUSIBLE, not proof that one caused the hang.
-
-What settles it, once the adapter is back on the bus: with the driver
-resident and polling, **unplug the adapter** and see whether the box
-survives. A driver that wedges on a disconnect is a real bug regardless of
-whether it caused this one, and `poll_hotplug` is the path that has to
-handle it.
-
-The experiment, in order, and each step is one job so a hang names itself:
-
-0. With the adapter back: driver resident, then **pull the adapter** while it
-   polls. This is now the first test, because it is the cheapest and the
-   most likely.
-1. `/U`, then `/W`, then `TICKCHK` -- does the BIOS clock keep time with the
-   driver resident and a mouse moving? (Baseline with NO driver is already
-   measured: `INT 08h` and `INT 1Ch` both 18 Hz, normal.)
-2. `PS2TEST`, then `TICKCHK` again, as a SEPARATE job. If the clock kept time
-   in step 1 and has stopped now, the first hypothesis is confirmed and the
-   fault is in the suspend/resume path, not in the serial code at all.
-3. Then `/U`, `/W /R=2`, and the same suite that hung, with the jiggler
-   still moving. Surviving at 36 Hz where 145 Hz hung is the livelock
-   result; hanging again at 36 Hz rules it out and the CH375 side is next.
-
-Note that a power cut does not recover this box: POST halts at **"Press F1 to
-continue"** on the dead CMOS, so a cycle trades one unusable state for
-another. It needs a keypress at the machine.
+One reading that is expected rather than a fault: with a jiggler there is
+nothing to click, so `buttons seen=00` and the driver's "no button bit has
+ever arrived" note are correct. The button paths are covered by `MOUSETST`'s
+synthetic checks, which pass 34/34, and by `CLICKTST` with a hand present.
 
 ### The mouse changes protocol while it is running
 
