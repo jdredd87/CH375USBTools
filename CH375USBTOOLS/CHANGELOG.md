@@ -4,6 +4,34 @@ CH375USBTOOLS -- StevenC -- https://github.com/jdredd87/CH375USBTools
 
 ## Unreleased
 
+
+* **Three NASM includes are now shared with the assembly drivers**:
+  `src/ch375def.inc` (command codes, statuses, token PIDs),
+  `src/ch375io.inc` (the register primitives and the bounded wait for the
+  chip's interrupt) and `src/ch375ser.inc` (the `SET_RETRY` split, the
+  endpoint-0 vendor request, and the bulk OUT with its own data toggle).
+  `CH375Mouse` and the FOSSIL driver in DOSBridge's `projects/fossil` both
+  build against them.
+
+  The `SET_RETRY` split is the reason. `$8F` retries a NAK for ever, which
+  is right while enumerating and ruinous while polling, and it had been
+  rediscovered **five times** across these projects -- each time as a
+  machine that had become unusably slow -- because it lived in three places
+  and only one of them ever got fixed. A rule written down once can only be
+  wrong once.
+
+  Each include sits at the exact position its code held inside
+  `usbmouse.asm`, so the extraction could be checked the only way that
+  really settles it: the mouse driver still assembles **byte for byte** to
+  the same image, 10,232 bytes, CRC-32 `195E9DCE`. For a pure code motion
+  that beats a hardware test, and it was the only check available anyway --
+  the CH375 had a modem on it at the time and the mouse could not be
+  plugged in.
+
+  Anything one caller needs and the other does not is behind `%ifdef`:
+  `CH375_COUNTERS` records failed transfers in `last_st` and `ch_err`.
+
+
 * **Every program now prints its name, version and author on its first
   line, and answers `/?` with a full help screen.** `-?`, `?`, `/HELP` and
   `--HELP` do the same thing. Bare `/H` deliberately does not: `USBKBD` and

@@ -178,7 +178,27 @@ Load exactly one of the three drivers.
 bring-up sequence, control transfers with a real data stage, and endpoint
 I/O. `CH375Keyboard` and `CH375Combo` compile against it with `-Fu`; each
 project builds its own `.ppu` into its own `bin\`, so they share source and
-never a compiled unit. Both assembly drivers are self-contained, and
+never a compiled unit.
+
+**The assembly drivers used to be self-contained and are not any more.**
+`CH375USBTOOLS/src` also holds three NASM includes -- `ch375def.inc`,
+`ch375io.inc` and `ch375ser.inc` -- carrying the register primitives, the
+`SET_RETRY` split and the USB transfer helpers. `USBMOUSE.COM` uses them,
+and so does the **FOSSIL driver** in DOSBridge's `projects/fossil`, which
+presents a USB-to-serial adapter, or a TCP socket, to DOS software as a
+modem on `INT 14h`.
+
+A Pascal unit cannot be included into NASM, which is why there are two
+shared layers rather than one: `ch375.pas` for the tools, the `.inc` files
+for the drivers.
+
+Why it was worth doing: the `SET_RETRY` distinction had been rediscovered
+**five times** across these projects, always as a machine that had gone
+unusably slow, because it lived in three places and only one ever got
+fixed. The extraction was checked by assembling `USBMOUSE.COM` afterwards
+and finding it **byte-identical** -- 10,232 bytes, CRC-32 `195E9DCE`.
+
+And
 `USBCOMBO.COM` is `USBKBD.COM`'s image with `USBMOUSE.COM`'s `INT 33h` half
 transplanted into it.
 

@@ -53,6 +53,27 @@ and consumed driver variables as movement.
 
 ## Unreleased
 
+
+**THE CH375 LAYER IS NO LONGER IN THIS FILE.** 276 lines left
+`usbmouse.asm` for `CH375USBTOOLS/src` and came back as three `%include`
+lines, so that the FOSSIL driver in DOSBridge's `projects/fossil` uses the
+same copy instead of a divergent one. It was duplicated deliberately while
+that driver was unproven -- this is working, shipped code and had no
+business being put at risk by something that had not yet run -- and it runs
+a BBS now.
+
+`USBMOUSE.COM` is **byte-identical across the change**: 10,232 bytes,
+CRC-32 `195E9DCE`, before and after. Each include sits at the exact
+position its code held in the file, which is what makes that possible. For
+a pure code motion, identical bytes say more than a hardware test would --
+and a hardware test was not available in any case, because the CH375 had a
+modem on it and the mouse could not be plugged in to try.
+
+`build.cmd` passes nasm `-I` for them. Assembling on the DOS box needs the
+three `.inc` files beside the `.asm`, because mininasm has no include path
+at all.
+
+
 **THE SAME MOUSE SPEAKS EITHER PROTOCOL.** The mouse on the bench has been
 read as Mouse Systems by `MOUPROBE` and as Microsoft by this driver, minutes
 apart, on one adapter, without being unplugged. Both readings are correct --

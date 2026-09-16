@@ -125,7 +125,15 @@ python "%DOSBRIDGE%\dosctl.py" deploy src\usbmouse.asm C:\WORK
 if errorlevel 1 exit /b 1
 python "%DOSBRIDGE%\dosctl.py" deploy tools\MNASMFIX.COM C:\WORK
 if errorlevel 1 exit /b 1
-python "%DOSBRIDGE%\dosctl.py" exec "C:\WORK\MNASMFIX.COM -O9 -f bin -o C:\WORK\UMDOS.COM C:\WORK\USBMOUSE.ASM"
+REM  The CH375 layer is shared and lives in CH375USBTOOLS\src. mininasm has
+REM  NO include path -- -I does nothing -- so the includes must go to C:\WORK
+REM  too, and it has to run FROM there with plain filenames rather than the
+REM  absolute ones this used to pass.
+for %%I in (ch375def.inc ch375io.inc ch375ser.inc) do (
+  python "%DOSBRIDGE%\dosctl.py" deploy "%TOOLS%\%%I" C:\WORK
+  if errorlevel 1 exit /b 1
+)
+python "%DOSBRIDGE%\dosctl.py" exec "CD C:\WORK" "C:\WORK\MNASMFIX.COM -O9 -f bin -o UMDOS.COM USBMOUSE.ASM"
 python "%DOSBRIDGE%\dosctl.py" pull C:\WORK\UMDOS.COM --out bin\UMDOS.COM
 if errorlevel 1 exit /b 1
 echo.
