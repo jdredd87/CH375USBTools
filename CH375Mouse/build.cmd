@@ -28,6 +28,11 @@ REM  The driver also assembles on the DOS machine itself, byte for byte
 REM  identically, using the patched mininasm in tools\:
 REM    MNASMFIX -O9 -f bin -o USBMOUSE.COM USBMOUSE.ASM
 REM  -O9 matters; without it some jumps stay in their long form.
+REM
+REM  The CH375 register primitives, the SET_RETRY split and the USB
+REM  transfer helpers now live in CH375USBTOOLS\src and are shared with
+REM  DOSBridge's FOSSIL driver, so nasm is given -I for them. Assembling
+REM  on the DOS box needs those three .inc files beside the .asm.
 
 setlocal
 cd /d "%~dp0"
@@ -45,7 +50,7 @@ set SERIAL=%~dp0..\CH375Serial\src
 if not exist bin mkdir bin
 
 echo --- USBMOUSE.COM
-nasm -f bin src\usbmouse.asm -o bin\USBMOUSE.COM
+nasm -f bin src\usbmouse.asm -o bin\USBMOUSE.COM -I "%TOOLS%/"
 if errorlevel 1 goto failed
 
 for %%T in (chdiag mousetst evtest ps2test tickchk clkchk mdemo clicktst) do (

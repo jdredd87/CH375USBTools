@@ -250,3 +250,47 @@ time to find:
 Exit codes must be ≤ 20, filenames are 8.3, and a DOS critical error
 blocks forever and looks exactly like a hang. See `CLAUDE.md` at the
 DOSBridge repository root.
+
+## The shared NASM includes
+
+`src/ch375def.inc`, `src/ch375io.inc` and `src/ch375ser.inc` are not tools.
+They are the part of the CH375 layer that two **assembly** drivers both
+need, kept in one place so it can only be wrong once:
+
+| | |
+|---|---|
+| `ch375def.inc` | command codes, statuses, token PIDs. Constants only, so it emits no bytes and may sit anywhere |
+| `ch375io.inc` | the register primitives: command, data, status, and the bounded wait for the chip's interrupt |
+| `ch375ser.inc` | the `SET_RETRY` split, a vendor request on endpoint 0, and a bulk OUT with its own data toggle |
+
+Used by `CH375Mouse/src/usbmouse.asm` and by DOSBridge's
+`projects/fossil/src/fossil.asm`. The Pascal tools share `dser.pas` from
+CH375Serial instead; a Pascal unit cannot be included into NASM, which is
+why there are two shared layers rather than one.
+
+**Why bother.** The `SET_RETRY` distinction -- `$8F` retries a NAK for ever,
+which is right while enumerating and ruinous while polling -- has been
+rediscovered **five times** across these projects, each time as a machine
+that had become unusably slow, because the knowledge lived in three places
+and only one of them had been fixed.
+
+**How the extraction was checked.** Each include sits at the exact position
+its code held inside `usbmouse.asm`, so assembling the mouse driver after
+the move produced a **byte-identical `USBMOUSE.COM`** -- 10,232 bytes,
+CRC-32 `195E9DCE`, before and after. For a pure code motion that is a
+stronger check than any hardware test: identical bytes are the same
+program. It also mattered practically, because the mouse was not plugged in
+at the time and could not have been tested any other way.
+
+Anything one caller needs and the other does not is behind `%ifdef` for the
+same reason:
+
+```
+CH375_COUNTERS    record failed transfers in last_st and ch_err.
+                  The caller declares both.
+```
+
+One thing deliberately **not** shared is `CLD`. The FOSSIL driver's copy of
+`bulk_out_ser` had grown one, the mouse's had not, and adding it would have
+broken byte-identity for no behavioural gain -- DF is clear by DOS
+convention on both paths. The caller clears it instead.
