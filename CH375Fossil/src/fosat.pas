@@ -22,73 +22,9 @@ uses Dos, chtool, fosapi;
 const
   VER = '0.1.0';
 
-type
-  TFosInfo = record
-    StrSiz : Word;  MajVer: Byte;  MinVer: Byte;
-    IdOfs  : Word;  IdSeg : Word;
-    IBufr  : Word;  IFree : Word;
-    OBufr  : Word;  OFree : Word;
-    SWidth : Byte;  SHeight: Byte; Baud: Byte;
-  end;
-
-const
-  HexDig : array[0..15] of Char = '0123456789ABCDEF';
-
 var
-  R    : Registers;
-  Info : TFosInfo;
+  Blk  : TFosInfo;
   Buf  : array[0..2047] of Byte;
-
-function HexW(W: Word): ShortString;
-begin
-  HexW := HexDig[(W shr 12) and 15] + HexDig[(W shr 8) and 15] +
-          HexDig[(W shr 4) and 15] + HexDig[W and 15];
-end;
-
-function Ticks: Word;
-begin
-  Ticks := MemW[$0040:$006C];
-end;
-
-procedure FosGetInfo(var I: TFosInfo);
-begin
-  FillChar(I, SizeOf(I), 0);
-  FillChar(R, SizeOf(R), 0);
-  R.AH := $1B; R.CX := SizeOf(I); R.DX := 0;
-  R.ES := Seg(I); R.DI := Ofs(I);
-  Intr($14, R);
-end;
-
-function RxAvail: Word;
-var I: TFosInfo;
-begin
-  FosGetInfo(I);
-  if I.IBufr = 0 then RxAvail := 0 else RxAvail := I.IBufr - 1 - I.IFree;
-end;
-
-procedure Purge;
-begin
-  FillChar(R, SizeOf(R), 0); R.AH := $0A; R.DX := 0; Intr($14, R);
-  FillChar(R, SizeOf(R), 0); R.AH := $09; R.DX := 0; Intr($14, R);
-end;
-
-function WriteBlock(var B; Len: Word): Word;
-begin
-  FillChar(R, SizeOf(R), 0);
-  R.AH := $19; R.CX := Len; R.DX := 0;
-  R.ES := Seg(B); R.DI := Ofs(B);
-  Intr($14, R);
-  WriteBlock := R.AX;
-end;
-
-function ReadBlock(var B; Max: Word): Word;
-begin
-  FillChar(R, SizeOf(R), 0);
-  R.AH := $18; R.CX := Max; R.DX := 0;
-  R.ES := Seg(B); R.DI := Ofs(B);
-  Intr($14, R);
-  ReadBlock := R.AX;
-end;
 
 procedure SendStr(const S: ShortString);
 var
@@ -164,7 +100,7 @@ begin
       end;
     end
     else
-      L := L + '<' + HexDig[(B shr 4) and 15] + HexDig[B and 15] + '>';
+      L := L + '<' + HexB(B) + '>';
   end;
   if Length(L) > 0 then WriteLn('  < ', L);
 end;
@@ -176,7 +112,8 @@ var
 begin
   WriteLn;
   WriteLn('--- ', What, ' ---');
-  Purge;
+  PurgeIn;
+  PurgeOut;
   SendStr(Cmd + #13);
   N := Collect(Limit, 8, El);
   ShowReply(N);
@@ -191,16 +128,10 @@ begin
   Check(What + ' produced a reply', N > 0);
 end;
 
-var
-  VecSeg, VecOfs, Sig: Word;
-
 begin
   Banner('FOSAT', VER, 'talk to a modem through INT 14h');
 
-  VecOfs := MemW[0 : $14 * 4];
-  VecSeg := MemW[0 : $14 * 4 + 2];
-  Sig    := MemW[VecSeg : VecOfs + 6];
-  if Sig <> $1954 then
+  if not Present then
   begin
     Note('no FOSSIL driver is loaded');
     Check('a FOSSIL driver is present', False);
@@ -208,30 +139,21 @@ begin
     Halt(Failures);
   end;
 
-  FillChar(R, SizeOf(R), 0);
-  R.AH := $04; R.DX := 0; R.BX := $4F50;
-  Intr($14, R);
-  Check('04h initialize returns 1954h', R.AX = $1954);
+  Check('04h initialize returns 1954h', Init);
 
-  FosGetInfo(Info);
-  Note('input buffer: ', Info.IBufr);
-  Note('output buffer: ', Info.OBufr);
+  Info(Blk);
+  Note('input buffer: ', Blk.IBufr);
+  Note('output buffer: ', Blk.OBufr);
 
   { AH=03h, AL bit 7: is there a carrier? On an idle modem there is not,
     and that is the correct answer rather than a fault. }
-  FillChar(R, SizeOf(R), 0);
-  R.AH := $03; R.DX := 0;
-  Intr($14, R);
-  Note('status word: ' + HexW(R.AX));
+  Note('status word: ' + HexW(Status));
 
   Round('AT', 36, 'AT');
   Round('ATE0', 36, 'ATE0 (stop the echo)');
   Round('ATI0', 36, 'ATI0');
   Round('ATI4', 180, 'ATI4 -- the long one');
 
-  FillChar(R, SizeOf(R), 0);
-  R.AH := $05; R.DX := 0;
-  Intr($14, R);
-
+  Deinit;
   Finish;
 end.

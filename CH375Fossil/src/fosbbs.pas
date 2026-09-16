@@ -75,152 +75,20 @@ var
   TickOn   : Boolean;
   Buf      : array[0..1023] of Byte;
 
-function Ticks: Word;
-begin
-  Ticks := MemW[$0040:$006C];
-end;
-
-function Status: Word;
-begin
-  FillChar(R, SizeOf(R), 0);
-  R.AH := $03; R.DX := 0;
-  Intr($14, R);
-  Status := R.AX;
-end;
-
-function Carrier: Boolean;
-begin
-  Carrier := (Status and $0080) <> 0;
-end;
-
-function CharWaiting: Boolean;
-begin
-  CharWaiting := (Status and $0100) <> 0;
-end;
-
-function GetCh: Byte;
-begin
-  FillChar(R, SizeOf(R), 0);
-  R.AH := $02; R.DX := 0;
-  Intr($14, R);
-  GetCh := R.AL;
-end;
-
-procedure PutCh(B: Byte);
-var Dead: Word;
-begin
-  Dead := Ticks + 36;
-  repeat
-    FillChar(R, SizeOf(R), 0);
-    R.AH := $0B; R.AL := B; R.DX := 0;
-    Intr($14, R);
-    if R.AX = 1 then Exit;
-  until (Integer(Ticks - Dead) >= 0) or (not Carrier);
-end;
-
-procedure Send(const S: ShortString);
-var I: Integer;
-begin
-  for I := 1 to Length(S) do PutCh(Ord(S[I]));
-end;
-
-procedure SendLn(const S: ShortString);
-begin
-  Send(S);
-  PutCh(13);
-  PutCh(10);
-end;
-
-function WriteBlock(var B; Len: Word): Word;
-begin
-  FillChar(R, SizeOf(R), 0);
-  R.AH := $19; R.CX := Len; R.DX := 0;
-  R.ES := Seg(B); R.DI := Ofs(B);
-  Intr($14, R);
-  WriteBlock := R.AX;
-end;
-
-function ReadBlock(var B; Max: Word): Word;
-begin
-  FillChar(R, SizeOf(R), 0);
-  R.AH := $18; R.CX := Max; R.DX := 0;
-  R.ES := Seg(B); R.DI := Ofs(B);
-  Intr($14, R);
-  ReadBlock := R.AX;
-end;
-
-procedure Flush;
-begin
-  FillChar(R, SizeOf(R), 0);
-  R.AH := $08; R.DX := 0;
-  Intr($14, R);
-end;
-
-procedure PurgeIn;
-begin
-  FillChar(R, SizeOf(R), 0);
-  R.AH := $0A; R.DX := 0;
-  Intr($14, R);
-end;
-
-procedure DropDtr;
-begin
-  FillChar(R, SizeOf(R), 0);
-  R.AH := $06; R.AL := 0; R.DX := 0;
-  Intr($14, R);
-end;
-
-procedure RaiseDtr;
-begin
-  FillChar(R, SizeOf(R), 0);
-  R.AH := $06; R.AL := 1; R.DX := 0;
-  Intr($14, R);
-end;
-
-procedure Deinit;
-begin
-  FillChar(R, SizeOf(R), 0);
-  R.AH := $05; R.DX := 0;
-  Intr($14, R);
-end;
-
-function OutFree: Word;
-var I: array[0..18] of Byte;
-begin
-  FillChar(I, SizeOf(I), 0);
-  FillChar(R, SizeOf(R), 0);
-  R.AH := $1B; R.CX := SizeOf(I); R.DX := 0;
-  R.ES := Seg(I); R.DI := Ofs(I);
-  Intr($14, R);
-  OutFree := I[14] or (Word(I[15]) shl 8);
-end;
-
 procedure BuildStub;
-var W: Word;
 begin
   FillChar(Stub, SizeOf(Stub), 0);
-  W := Ofs(Stub) + ST_COUNT;
-  Stub[ST_TICK + 0] := $2E;                    { CS: }
-  Stub[ST_TICK + 1] := $FF;                    { inc word [disp16] }
-  Stub[ST_TICK + 2] := $06;
-  Stub[ST_TICK + 3] := Lo(W);
-  Stub[ST_TICK + 4] := Hi(W);
-  Stub[ST_TICK + 5] := $CB;                    { retf }
+  BuildTickStub(Stub, ST_TICK, ST_COUNT);
 end;
 
 function TickCount: Word;
 begin
-  TickCount := Stub[ST_COUNT] or (Word(Stub[ST_COUNT + 1]) shl 8);
+  TickCount := StubCount(Stub, ST_COUNT);
 end;
 
 procedure TickHook(TurnOn: Boolean);
 begin
-  FillChar(R, SizeOf(R), 0);
-  R.AH := $16;
-  if TurnOn then R.AL := 1 else R.AL := 0;
-  R.ES := Seg(Stub); R.DX := Ofs(Stub) + ST_TICK;
-  Intr($14, R);
-  if R.AX = 0 then TickOn := TurnOn;
+  if TickChain(TurnOn, Seg(Stub), Ofs(Stub) + ST_TICK) then TickOn := TurnOn;
 end;
 
 { A tick-chain entry left behind is a far call into memory DOS has since
@@ -231,7 +99,7 @@ procedure BbsRelease; far;
 begin
   ExitProc := PrevExit;
   if TickOn then TickHook(False);
-  DropDtr;
+  Dtr(False);
   Deinit;
 end;
 
@@ -246,7 +114,7 @@ begin
   begin
     if not Carrier then begin GetLine := False; Exit; end;
     if Integer(Ticks - Dead) >= 0 then begin GetLine := False; Exit; end;
-    if CharWaiting then
+    if RxReady then
     begin
       B := GetCh;
       Dead := Ticks + Limit;
@@ -307,7 +175,7 @@ begin
     N := WriteBlock(Buf, Chunk);
     Inc(Sent, N);
     if N = 0 then
-      while (OutFree < 64) and Carrier and (Integer(Ticks - Dead) < 0) do ;
+      while (TxFree < 64) and Carrier and (Integer(Ticks - Dead) < 0) do ;
   end;
   Flush;
   SendLn('');
@@ -370,6 +238,10 @@ end;
 { ------------------------------------------------------------------- }
 {  The calls a BBS makes and then trusts, exercised on a LIVE line.     }
 { ------------------------------------------------------------------- }
+{ These stay as raw INT 14h calls rather than going through fosapi, and
+  deliberately: the point of this menu entry is to exercise the functions a
+  BBS makes once at startup and then trusts, so wrapping them would be
+  testing the wrapper. }
 procedure DoHousekeeping;
 var
   Before, After : Word;
@@ -435,7 +307,7 @@ begin
     Ok := False;
   end;
 
-  SendLn('1Bh output free  : ' + Five(OutFree));
+  SendLn('1Bh output free  : ' + Five(TxFree));
 
   if Carrier then SendLn('03h carrier      : still up')
   else Ok := False;
@@ -487,7 +359,7 @@ begin
       Dead := Ticks + 900;                    { progress resets the clock }
     end
     else
-      while (OutFree < 64) and Carrier and (Integer(Ticks - Dead) < 0) do ;
+      while (TxFree < 64) and Carrier and (Integer(Ticks - Dead) < 0) do ;
   end;
   Flush;
   Secs := (Ticks - Start) div 18;
@@ -637,20 +509,19 @@ begin
 
   Flush;
   Inc(Served);
-  DropDtr;
+  Dtr(False);
 
   { Wait for the line to actually come down before listening again, or the
     next turn round the loop sees a carrier that has not dropped yet and
     answers a call nobody made. }
   Dead := Ticks + 90;
   while Carrier and (Integer(Ticks - Dead) < 0) do ;
-  RaiseDtr;
+  Dtr(True);
 end;
 
 var
-  VecSeg, VecOfs, Sig : Word;
-  Dead                : Word;
-  Code                : Integer;
+  Dead : Word;
+  Code : Integer;
 
 begin
   Banner('FOSBBS', VER, 'a BBS that thinks it has a modem');
@@ -673,10 +544,7 @@ begin
   PrevExit := ExitProc;
   ExitProc := @BbsRelease;
 
-  VecOfs := MemW[0 : $14 * 4];
-  VecSeg := MemW[0 : $14 * 4 + 2];
-  Sig    := MemW[VecSeg : VecOfs + 6];
-  if Sig <> $1954 then
+  if not Present then
   begin
     Note('no FOSSIL driver is loaded');
     Check('a FOSSIL driver is present', False);
@@ -684,12 +552,9 @@ begin
     Halt(Failures);
   end;
 
-  FillChar(R, SizeOf(R), 0);
-  R.AH := $04; R.DX := 0; R.BX := $4F50;
-  Intr($14, R);
-  Check('the line opened', R.AX = $1954);
+  Check('the line opened', Init);
 
-  RaiseDtr;
+  Dtr(True);
   WriteLn('  holding the line open for ', WaitSecs, ' seconds');
   Dead := Ticks + WaitSecs * 18;
 
@@ -715,7 +580,7 @@ begin
   if TickOn then TickHook(False);
   Check('no tick-chain entry was left behind', not TickOn);
 
-  DropDtr;
+  Dtr(False);
   Deinit;
   ExitProc := PrevExit;
 

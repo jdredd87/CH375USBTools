@@ -36,26 +36,14 @@ const
   QUIET_SECS = 75;              { the driver gives up at about 60 }
 
 var
-  R      : Registers;
   T0, T1 : Word;
   Dead   : Word;
   Secs   : Word;
 
-function Ticks: Word;
-begin
-  Ticks := MemW[$0040:$006C];
-end;
-
-var
-  VecSeg, VecOfs, Sig : Word;
-
 begin
   Banner('FOSWDOG', VER, 'prove the watchdog fires');
 
-  VecOfs := MemW[0 : $14 * 4];
-  VecSeg := MemW[0 : $14 * 4 + 2];
-  Sig    := MemW[VecSeg : VecOfs + 6];
-  if Sig <> $1954 then
+  if not Present then
   begin
     Note('no FOSSIL driver is loaded');
     Check('a FOSSIL driver is present', False);
@@ -67,10 +55,7 @@ begin
   WriteLn('  which is the bridge''s own network. From here until the');
   WriteLn('  watchdog fires, this machine cannot be reached.');
 
-  FillChar(R, SizeOf(R), 0);
-  R.AH := $04; R.DX := 0; R.BX := $4F50;
-  Intr($14, R);
-  Check('the line opened', R.AX = $1954);
+  Check('the line opened', Init);
 
   T0 := Ticks;
   Dead := T0 + QUIET_SECS * 18;
