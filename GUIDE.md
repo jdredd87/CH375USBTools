@@ -98,6 +98,7 @@ reset it out from under each other.
 | a USB-to-PS/2 adapter with both, or a combo dongle | `USBCOMBO.COM` |
 | a mouse, and you want Windows 3.x | `USBMOUSE /W` or `USBCOMBO /W` |
 | a USB Ethernet adapter | `USBPKT.COM` — see CH375Net |
+| DOS software that wants a modem | `FOSSIL.COM` — see CH375Fossil |
 | a USB display adapter | nothing resident; the CH375Video tools drive it directly |
 | a USB speaker or headset | nothing resident; the CH375Audio tools set its volume and read its buttons. It cannot be played through — see below |
 | no idea what you have | `USBINFO` first — it drives nothing |
