@@ -341,6 +341,7 @@ actually run at; the rest is correct by inspection.
 | USB keyboard | **yes**, BIOS buffer | **no**, and unfixable here | **untested** |
 | USB Ethernet | **yes**, packet driver at INT 65h | n/a | **untested** |
 | USB display | **yes**, DisplayLink only | no | **untested** |
+| USB camera | **yes**, IBM PC Camera, stills | no | **untested** |
 | USB storage | no — out of scope | no | no |
 | USB hubs | no | no | no |
 | WiFi dongles, speakers, serial adapters | enumerated and dumped only | — | — |
@@ -372,6 +373,16 @@ EDIT starts. Typing into EDIT works; its **menus** do not. The mouse
 machine here to test it on, and shipping a claim that cannot be verified is
 worse than shipping nothing. See [what a 386 would
 unlock](#what-a-386-would-unlock).
+
+**A USB camera works, and so far only one: the IBM PC Camera**
+(`0545:8080`, Xirlink C-It model 2) -- colour stills at up to 352x288 in
+about two seconds, and pictures on the DOS screen every few seconds. It
+proves that an isochronous *IN* stream can be read through a CH375, which
+the audio work had seemed to rule out; what made this camera work was its
+own packet-size and window registers, which other cameras mostly lack.
+[CH375Camera/README.md](CH375Camera/README.md) says which other cameras
+have a chance, and [CH375Camera/NEXT.md](CH375Camera/NEXT.md) is where to
+start with one.
 
 ---
 

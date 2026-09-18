@@ -61,6 +61,10 @@ What is **generic**, and would carry to another camera:
 | other old full-speed webcams with a vendor protocol | case by case | needs a streaming setting with packets of 64 bytes or less (or a register to make one), a way to cut the data per frame, and a known protocol |
 | modern UVC webcams | **poor** | usually high-speed devices with a poor full-speed fallback, smallest streaming packets over 64 bytes, often MJPEG only, and no standard crop control to take strips with |
 
+**[NEXT.md](NEXT.md) is the handover note for adding a camera** -- the
+order to do it in, the hazards, and which parts of the code are
+camera-specific.
+
 **Trying another camera starts with `USBINFO`** from `CH375USBTOOLS`: if no
 alternate setting of its streaming interface has a maximum packet of 64
 bytes or less, and nothing is known that can change that, it will not
