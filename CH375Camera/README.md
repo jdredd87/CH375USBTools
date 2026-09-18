@@ -27,7 +27,7 @@ One of the projects in [CH375USBTools](../README.md).
 
 | | |
 |---|---|
-| `CAMSNAP.EXE` | **Take a photograph.** 176x144, 320x240 or 352x288; writes a 24-bit colour (or 8-bit grey) `.BMP` and the camera's own bytes as `.RAW` |
+| `CAMSNAP.EXE` | **Take a photograph.** 176x144, 320x240 or 352x288; writes a 24-bit colour (or 8-bit grey) `.BMP` and the camera's own bytes as `.RAW`, and with `/A` ASCII (`.TXT`) and ANSI (`.ANS`) art |
 | `CAMLIVE.EXE` | **The picture on the screen, over and over.** Eight display modes, colour or grey, three detail levels. `S` or **the camera's button** saves, `C` colour/grey, `Q` stops |
 | `CAMBTN.EXE` | The camera's button: counts presses, with beeps to say when; also prints any other register that changes. `/V` with the camera streaming |
 | `CAMPROBE.EXE` | The first experiment: raw isochronous IN at the camera, with a status tally and hex dumps. Kept because it is the tool that shows the transport works |
@@ -45,6 +45,7 @@ cross compiler and `..\CH375USBTOOLS\src\ch375.pas`).
     CAMLIVE                      pictures on the screen until Q or 5 minutes
     CAMLIVE /D=T50               the same in 80x50 text -- faster, and mono-safe
     CAMLIVE /D=ASCII /N=1 /A     one picture, printed to stdout as ASCII art
+    CAMSNAP /A                   the photo as SNAP.TXT (ASCII) and SNAP.ANS (ANSI) too
 
 From the Windows side of DOSBridge: `build.cmd snap`, `build.cmd live`,
 `build.cmd ascii`.
@@ -123,18 +124,61 @@ on a mono card.
 | ![mode 13h](images/screen-13h.png) | |
 | mode 13h, `/F=2`, photographed | |
 
-The ASCII mode, as it comes back through DOSBridge (`CAMLIVE /D=ASCII /A`):
+### ASCII and ANSI art
+
+`CAMSNAP /A` also writes the photograph as text: `name.TXT`, ASCII art
+(printed to stdout too, which is how it comes back through DOSBridge), and
+`name.ANS`, colour ANSI art in half-blocks -- `TYPE` it with `ANSI.SYS`
+loaded, or open it in any ANSI viewer. `CAMLIVE /A` prints the ASCII of its
+last picture. Both from one run, straight off the box:
+
+| | |
+|---|---|
+| ![the photograph](images/art-photo.png) | ![ART.ANS, rendered](images/art-ansi.png) |
+| `ART.BMP` | `ART.ANS`, drawn from its own escape codes by `ans2png.py` |
+
+`ART.TXT`:
 
 ```
-::::::::::::-----------.      .=%%+-=**#%%%#+=:..:=: .        .==-=-=-=-----+*+
-::::::.:::::::::::::---     :#%%%###%%##+%#****%**+-:=:.....  .=======-----=***
-::::::::::---:---------    -=+*:...%%%%%...*%%%#..:=*-.:...   :======-=----=***
-:::-::.......:...:.::--   ::**.    -%%%-  .+%%%#.. .:+=.:..   :========-=---=-=
-::::::-:----------==---  .:+%-..   ..:.... .-=-... ..:+=...   :=========---.
-::::::----------====--:  .::=.  .++....  . ........ ..+*-...  -=========---.
-:::::.........::::::--:   ..:=. -%%%*##%..-**=+%%%...+%%=.  . -===========-.
-:::::-:------=-==-==--:    .:.-*=#******:=*####%%*:*%%%%..   .-===========-.
+   ........... ....:::-:.-:.-...:---+---:::= .-+++++=+++*. ....:=---::.....::::
+ .............  .::::::.:-:.-:=-:--:-:---=:-..=++++++++*@+-=++++*-.:---:....:.:
+   ........... .::::-::--+=-+=+====-:-=+---:..=+++++++++@@@@@@@@@%%#*##%%%%####
+ .............       .:---==++++==-::.:::.:...=++++++++*%@@@%%%%%%%%%%########*
+..........:::.    .-#@@%#%%%@@@%##*++=-:......+++++*+++*@@@@@@%%%%%%%%@%%%#####
+......:::::::.   :+##+-=@@@%:-+@@@*-=+*-:....:+*++++++++###****#***#*******##**
+.........:::::  :-%*....=%%=..:#@@-.::-*-:...:+*******+=.  .   ..... ...  . ...
+.....:.:::::::  :-@.............:.....:*#-...:+*******+=....      .
+.::::::::--:::  .:--..#@+=++:.-+==%@-.-%@=...:+********=... . .  ..
+..::::::::::::  ..:-==#@@%%@*+%%@@@@+%@@#++..:+********=....................
+..:.::::::::::  ....::-++++#%##****+=--:.::..:+********=...................
+.:::::::-----:   ........:::::::::...........:+********-                .....::
+.:::::::::---:    ..#%@@+@@@@@@#@%@@@@-......:+********-                ....:--
+....::::::::-:    ..::-=:--====-+++=++:......:+*******+-                ....:--
+.:::::::::::-:          .....................:+*******+-                ....:--
+:::::::::----:.....................::::::::::-+*******+-                ....::-
+.:::::::::::-----==+++**#****#*****###%%%%%%##********+-                    ..:
+..::::::::::--++**##%#%%@@%%%%%%%%%%%%@@@@@@@%******+++:
+.::::::::-----++++**#%###***##*#%@@@@@@@@@@@@@*++++++++:
+:::::::::::----=#%%%##+==----===+**%@@@@@@@@@@**+++++++:
+.::::::::::::-==+=====------===+**#%@@@@@@%###++++++++=.
+.:::::::::::----=====-=====+++++***##%%%%%#*++++++++++=.
+.::::::::::::----------==========+++++++++++++++++++++=.
+.::::::::::::------------=========+++++++++++++++==+===.
+....:.:::::::::-----------===========++=+++++++=+======.
+..::::::::::::-------------=============++=+===========.
+.::::::::::::::-------------===========================-:::::::::...........::.
+.:::::::::::::--------------=======================+*+====---=------------:::::
+....::::::::::--------------=======================****++++==+=========-----:::
 ```
+
+Each character is the mean of the block of pixels it covers, not one
+sample -- the first version sampled, and read as noise -- and the ramp is
+` .:-=+*#%@`; a 70-character ramp was tried and read worse. The ANSI art is
+two pixels a character in the 16 CGA colours, with a light ordered dither
+so a grey subject keeps some shading: CGA has four greys, and without it
+the cartridge came out one flat dark grey. `ANSI.SYS` cannot show a bright
+colour as a background, so each cell puts the brighter half in the
+foreground, choosing the upper or lower half-block to suit.
 
 ## How it works
 
@@ -337,6 +381,7 @@ long one for "stop"; `/V` watches with the camera streaming.
 | `src/camfile.pas` | BMP and RAW |
 | `src/ptime.pas` | a microsecond clock off the PIT, used by `CAMPROBE`'s packet timestamps |
 | `rawcal.py` | reads `CAMCAL` recordings: frames, packet sizes, where the `00 FF` markers fall |
+| `ans2png.py` | draws a `.ANS` from `CAMSNAP /A` as a PNG, from its escape codes |
 
 The register sequences come from Linux's
 [`drivers/media/usb/gspca/xirlink_cit.c`](https://github.com/torvalds/linux/blob/master/drivers/media/usb/gspca/xirlink_cit.c),

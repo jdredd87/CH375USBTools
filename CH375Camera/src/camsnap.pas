@@ -38,6 +38,7 @@ var
   Tries:    Integer = 8;
   StripH:   Integer = 0;          { 0 = the full height }
   Chatty:   Boolean = False;
+  Art:      Boolean = False;        { /A: also .TXT and .ANS, ASCII to stdout }
 
 procedure Usage;
 begin
@@ -55,6 +56,8 @@ begin
   WriteLn('  /B=n     brightness 0..63.  Default 32');
   WriteLn('  /T=n     frames to wait for each strip.  Default 8');
   WriteLn('  /H=n     strip height in lines, a multiple of 8.  Default: all');
+  WriteLn('  /A       also name.TXT (ASCII art, printed here too) and name.ANS');
+  WriteLn('           (ANSI half-block colour art: TYPE it under ANSI.SYS)');
   WriteLn('  /V       per-strip detail: frames, lines, tokens');
   HelpTail;
 end;
@@ -91,6 +94,7 @@ begin
       'H': begin Ok := (C = 0) and (N >= 8) and (N <= 288) and (N mod 8 = 0);
                  StripH := N; end;
       'V': Chatty := True;
+      'A': Art := True;
     else
       Ok := False;
     end;
@@ -110,6 +114,7 @@ begin
 end;
 
 var
+  TF: Text;
   R, Bad, I: Integer;
   X, Y, W, H: Word;
   T0, TS: LongInt;
@@ -158,6 +163,14 @@ begin
   WriteRaw(OutBase + '.RAW');
   WriteBmp(OutBase + '.BMP', Grey);
   WriteLn('wrote  : ', OutBase, '.RAW  ', OutBase, '.BMP');
+  if Art then
+  begin
+    Assign(TF, OutBase + '.TXT'); Rewrite(TF); AsciiArt(TF, 79); Close(TF);
+    Assign(TF, OutBase + '.ANS'); Rewrite(TF); AnsiArt(TF, 79); Close(TF);
+    WriteLn('wrote  : ', OutBase, '.TXT  ', OutBase, '.ANS');
+    WriteLn;
+    AsciiArt(Output, 79);
+  end;
   if Bad > 0 then
   begin
     WriteLn(Bad, ' strips never arrived whole');

@@ -43,3 +43,8 @@ check once per picture missed them).
 Later the same day: `CAMLIVE` draws the finished picture line by line
 across the full width instead of strip by strip, and odd scales get the
 word-fill dither -- VESA 6.6 s to 5.0, 352x288 on VESA 10.4 s to 8.0.
+
+`CAMSNAP` /A: the photograph also as ASCII art (`.TXT`, printed too) and
+ANSI half-block colour art (`.ANS`), each character a block mean rather
+than one sample; `CAMLIVE /A` uses the same ASCII. `ans2png.py` renders a
+`.ANS` for the README.

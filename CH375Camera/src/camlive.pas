@@ -561,29 +561,6 @@ begin
   PollButton;
 end;
 
-{ ---- ASCII to stdout ---- }
-
-procedure PrintAscii;
-const Ramp: string[10] = ' .:-=+*#%@';
-var
-  X, Y, Rows, V: Integer;
-  S: ShortString;
-  G: array[0..MAXW - 1] of Byte;
-begin
-  Rows := 36;
-  WriteLn;
-  for Y := 0 to Rows - 1 do
-  begin
-    RowGrey(LongInt(Y) * Mode.H div Rows, 0, Mode.W, @G);
-    S := '';
-    for X := 0 to 78 do
-    begin
-      V := SLutG[G[LongInt(X) * Mode.W div 79]];
-      S := S + Ramp[1 + V * 9 div 255];
-    end;
-    WriteLn(S);
-  end;
-end;
 
 { ---- main ---- }
 
@@ -727,7 +704,7 @@ begin
           ' s; the last took ', LastPicMs, ' ms to take and draw; ',
           Bad, ' strips missed');
   WriteLn('saved   : ', Saves, '   button presses seen: ', BtnPresses);
-  if AsciiOut then PrintAscii;
+  if AsciiOut then begin WriteLn; AsciiArt(Output, 79); end;
   { 12, as CAMSNAP: some strip never arrived whole }
   if Bad > 0 then Halt(12);
   Halt(0);
