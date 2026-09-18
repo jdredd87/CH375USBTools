@@ -23,6 +23,56 @@ One of the projects in [CH375USBTools](../README.md).
 | ![a 352x288 still, straight off the camera](images/snap352.png) | ![the same camera on the DOS screen, mode X](images/screen-modex.png) |
 | `CAMSNAP /M=352` -- the whole sensor, 2.2 s, saved as-is | `CAMLIVE` in mode X, photographed off the real screen |
 
+## Which cameras
+
+**One: the IBM PC Camera, `0545:8080` with `bcdDevice 030A` -- Xirlink's
+C-It chip, "model 2" in Linux's driver.** The tools check for it and refuse
+anything else by name. This is a driver for one camera, not yet a generic
+one, and the reason is worth knowing before trying another: the tricks that
+made this camera work are the camera's own.
+
+What is **specific to this camera**:
+
+* **Its packet size is a register.** The streaming endpoint says 1022
+  bytes, but the camera lets the host set its maximum packet (`0106`/`0107`),
+  so it can be made to fit the CH375's 64-byte buffer. A camera whose
+  smallest packet is larger than 64 bytes cannot be read by a CH375 at all.
+* **It has a window.** Registers `0102`-`0105` pick which part of the sensor
+  it sends, which is how a whole strip arrives in one frame. Without one,
+  only scattered fragments of each frame get through.
+* Its register protocol and start sequence, its frame headers, its pixel
+  formats (Bayer, and a YUV layout of its own), and its button.
+
+What is **generic**, and would carry to another camera:
+
+* **Isochronous IN on a CH375 works** -- for any device whose packets fit in
+  64 bytes. `CH375Audio`'s "impossible" was about OUT.
+* The assembly packet loop, telling blanking from the gaps between lines,
+  assembling a frame by length, strips as a technique.
+* Everything after the picture is in memory: the displays, the assembly
+  drawing, BMP, ASCII and ANSI output.
+
+**The chances with other cameras:**
+
+| | | |
+|---|---|---|
+| other Xirlink / IBM models -- `0545:8080` models 0, 1 and 3, the IBM NetCamera `0545:8002`, the Veo `800C`/`800D` | **good** | the same chip family; Linux's `gspca/xirlink_cit` has their start sequences, so it is porting and measuring |
+| "dual-mode" and still digital cameras that store pictures -- USB Still Image class, PTP | **good**, and the most promising way to generic | they hand over stored JPEGs by *bulk* transfer, which a CH375 does well, with no race against the sensor; decoding JPEG on an 8086 is the slow part |
+| other old full-speed webcams with a vendor protocol | case by case | needs a streaming setting with packets of 64 bytes or less (or a register to make one), a way to cut the data per frame, and a known protocol |
+| modern UVC webcams | **poor** | usually high-speed devices with a poor full-speed fallback, smallest streaming packets over 64 bytes, often MJPEG only, and no standard crop control to take strips with |
+
+**Trying another camera starts with `USBINFO`** from `CH375USBTOOLS`: if no
+alternate setting of its streaming interface has a maximum packet of 64
+bytes or less, and nothing is known that can change that, it will not
+stream through a CH375.
+
+**Making it generic** means splitting a camera driver out of the code:
+`camgrab`'s packet engine and strip assembly, `camdisp`, `camfast` and
+`camfile` are already camera-independent; what each camera family would
+supply is identification and its start and stop, packet-size control,
+window control, frame header layout, pixel format, and button -- today
+`cit.pas` and the mode table at the top of `camgrab.pas`.
+
 ## The tools
 
 | | |
