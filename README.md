@@ -33,6 +33,7 @@ which is rather the point.
 | **[CH375Audio](CH375Audio/)** | **A USB speaker as a mixer and a button panel.** Four tools for USB Audio Class devices: decode the topology, set volume and mute over control transfers, and read the transport buttons off the HID interface. **Playing audio is impossible** and the project measures why rather than asserting it — the stream is isochronous, wants 192-byte packets, and needs 192 KB/s against 19 KB/s measured |
 | **[CH375Serial](CH375Serial/)** | **It talks to a modem.** DOS drives a USB-to-serial adapter and holds an AT-command conversation with a USRobotics Courier V.Everything at up to **38400 baud**. The ceiling is the USB packet rate, not the UART — the same number that set the video project's frame rate and killed the audio one |
 | **[CH375Fossil](CH375Fossil/)** | **A modem that is not there.** `FOSSIL.COM` -- an FSC-0015 FOSSIL driver, all thirty `INT 14h` functions, so unmodified DOS software believes there is a modem on COM1. Underneath is either a USB-to-serial adapter on the CH375, or a TCP listener on any packet driver. A BBS written in 1991 cannot tell |
+| **[CH375Camera](CH375Camera/)** | **A 1998 webcam taking photographs.** An IBM PC Camera streams video isochronously at 225 KB/s into a chip with no isochronous mode; it works anyway, because an isochronous *IN* is just a packet the chip receives, and the camera's own window registers let a picture be taken as full-height 64-pixel strips, one frame each. Stills at 176x144, 320x240 and 352x288 in 1.5-2.2 s, saved as BMP, or shown live-ish in VESA, mode X, 13h, 12h, half-block text or ASCII |
 
 Each project has its own `README.md`, `CHANGELOG.md`, `build.cmd` and
 `bin\`. The binaries are committed deliberately: the machine this targets
@@ -49,6 +50,7 @@ they actually want.
 | USB display | **yes**, DisplayLink only — see below | no | **untested** |
 | USB audio | **mixer and buttons yes; playback no** — see below | no | **untested** |
 | USB serial | **yes**, up to 38400 baud — see CH375Serial | no | **untested** |
+| USB camera | **yes**, IBM PC Camera, stills — see CH375Camera | no | **untested** |
 | USB storage, hubs | no — out of scope | no | no |
 
 ### A USB display works, but only if the chip has a framebuffer
