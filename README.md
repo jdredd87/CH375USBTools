@@ -187,9 +187,11 @@ never a compiled unit.
 `CH375USBTOOLS/src` also holds three NASM includes -- `ch375def.inc`,
 `ch375io.inc` and `ch375ser.inc` -- carrying the register primitives, the
 `SET_RETRY` split and the USB transfer helpers. `USBMOUSE.COM` uses them,
-and so does the **FOSSIL driver** in DOSBridge's `projects/fossil`, which
-presents a USB-to-serial adapter, or a TCP socket, to DOS software as a
-modem on `INT 14h`.
+and so does **`CH375Fossil`**, which presents a USB-to-serial adapter, or a
+TCP socket, to DOS software as a modem on `INT 14h`. It was written in
+DOSBridge's `projects/fossil`, where its test machinery lives, and moved
+here on 2026-09-16 because the CH375 transport is what it is for -- the
+image is byte-identical across the move.
 
 A Pascal unit cannot be included into NASM, which is why there are two
 shared layers rather than one: `ch375.pas` for the tools, the `.inc` files
