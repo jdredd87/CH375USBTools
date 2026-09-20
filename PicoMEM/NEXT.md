@@ -82,10 +82,13 @@ for the moment" comment says it would.
   polls and says so -- its totals are a floor, not a total -- which is fine
   for "does data arrive" and useless for a pointer.
 
-  **Start non-resident.** A prototype that hooks IRQ 7, chains, accumulates
-  for twenty seconds and prints the totals proves the chain works and
-  nothing wedges, before a byte goes resident. Same discipline as PMMEM
-  asking one block whose answer is known before asking sixty-four.
+  **The non-resident prototype is done: `PMIRQ`, 2026-09-20.** `/A` proved
+  the mechanism on `INT 1Ch` (91 ticks of an expected 91), `/B` then hooked
+  the card's IRQ 7, chained to its BIOS handler at `D000:2C1E`, and counted
+  **694 interrupts carrying new data in twenty seconds** -- about 35 events
+  a second where polling saw 14. The chain, the restore and the card all
+  survived. What is left is the resident part: a TSR that keeps the
+  accumulators, serves `INT 33h`, and unhooks on request.
 
   The card's own distribution has such a driver (`PMMOUSE`), so it is known
   to be possible; this would be ours, and it would work on either card

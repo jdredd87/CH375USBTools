@@ -13,6 +13,8 @@ REM    build.cmd opl        ...then PMOPL, a scale through the card AdLib
 REM    build.cmd bench      ...then PMBENCH, command and memory timing
 REM    build.cmd mouse      ...then PMMTEST, watching a USB mouse
 REM    build.cmd watch      ...then PMWATCH, every byte of shared memory
+REM    build.cmd irqa       ...then PMIRQ /A, the safe interrupt-hook test
+REM    build.cmd irqb       ...then PMIRQ /B, the card IRQ carrying the mouse
 REM    build.cmd dump       ...then PMDUMP, and fetch PMDUMP.BIN here
 REM    build.cmd tick       ...then PMTICK: the PC clock around a command
 REM    build.cmd cmdt       ...then PMCMDT: N queries in a row
@@ -34,7 +36,7 @@ if "%DOSBRIDGE%"=="" set DOSBRIDGE=C:\dosbridge
 set TOOLS=%~dp0..\CH375USBTOOLS\src
 if not exist bin mkdir bin
 
-for %%T in (pminfo pmcfg pmmem pmdev pmstat pmopl pmbench pmdump pmmtest pmwatch pmcmdt pmtick) do (
+for %%T in (pminfo pmcfg pmmem pmdev pmstat pmopl pmbench pmdump pmmtest pmwatch pmcmdt pmtick pmirq) do (
   echo --- %%T
   fpc -Tmsdos -Pi8086 -WmLarge -Fu"%TOOLS%" -FEbin -FUbin src\%%T.pas >nul
   if errorlevel 1 goto failed
@@ -82,6 +84,13 @@ exit /b %ERRORLEVEL%
 :runcmdt
 python "%DOSBRIDGE%\dosctl.py" run --timeout 120 bin\PMCMDT.EXE
 exit /b %ERRORLEVEL%
+:runirqa
+python "%DOSBRIDGE%\dosctl.py" run --timeout 120 bin\PMIRQ.EXE /A /S=5
+exit /b %ERRORLEVEL%
+:runirqb
+python "%DOSBRIDGE%\dosctl.py" run --timeout 200 bin\PMIRQ.EXE /B /S=20
+exit /b %ERRORLEVEL%
+
 :rundump
 python "%DOSBRIDGE%\dosctl.py" run --timeout 90 bin\PMDUMP.EXE C:\WORK\PMDUMP.BIN
 if errorlevel 1 exit /b %ERRORLEVEL%

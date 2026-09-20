@@ -43,6 +43,7 @@ anything.
 | `PMDUMP` | the 16 KB ROM and 8 KB shared memory to a file. **Blanks the WiFi key by default** |
 | `PMTICK` | the interrupt flag, the 8259 and the BIOS tick around one command. A diagnostic, kept because it is what found the `Intr` hang |
 | `PMCMDT` | N queries in a row, D ticks apart, with no DOS calls between. The other half of that diagnosis |
+| `PMIRQ` | hooks an interrupt, chains it and comes back. `/A` on the harmless timer hook first, `/B` on the card's own IRQ. The groundwork for a mouse driver, and nothing stays resident |
 
 `PMMTEST` is deliberately not called `PMMOUSE`: it is a probe, and the card's
 own distribution uses that name for an actual `INT 33h` driver. If one is ever
@@ -217,6 +218,54 @@ actively-reporting mouse leaving it at zero is that comment demonstrated.
 An earlier draft of this project proposed checking that byte to see whether
 a mouse had been claimed; it would never have worked, and the source said so
 before the test did.
+
+### The card's interrupt carries the mouse, and polling loses most of it
+
+`PMMTEST` polls, and says so: its totals are a floor because the firmware
+overwrites the three mouse bytes on every event and never accumulates.
+`PMIRQ /B` hooks the card's own interrupt instead -- `BV_IRQ` says 7, so
+`INT 0Fh` -- reads those bytes the moment the card raises it, and chains to
+the card's BIOS handler so the acknowledge still happens.
+
+| | events per second |
+|---|---|
+| polling, `PMMTEST` | about 14 |
+| interrupt-driven, `PMIRQ /B` | **about 35** |
+
+694 interrupts carried new data in twenty seconds. **Polling was catching
+around 40% of the movement** -- fine for "does data arrive", useless for a
+pointer, which is exactly what the tool warned it would be.
+
+**Phase A exists because phase B can stop the machine.** Getting the chain
+wrong on the card's IRQ means its interrupt is never acknowledged and the
+8259 stays in service, taking the timer and the network down with it. So
+`/A` does the identical thing to `INT 1Ch` -- the timer hook the BIOS
+provides for the purpose, whose default handler is an IRET -- and counts:
+
+```
+  previous handler F000:7BE3
+  ticks counted : 91   expected about 91
+  the hook, the chain and the restore all work.
+```
+
+That proves FPC's `interrupt` procedures set DS up the way this code
+assumes, that the chain works, and that the vector is restored, on an
+interrupt where a mistake costs nothing. Only then is it worth pointing the
+same machinery at the card.
+
+The chain itself is one assembler block, and it has to be:
+
+```pascal
+asm
+  pushf
+  call dword ptr [OldVec]
+end;
+```
+
+The old handler ends with `IRET`, which pops IP, CS **and the flags**, so the
+flags must be on the stack for it. A plain far call would unbalance the
+return and the machine would go somewhere random. One block, so nothing the
+compiler emits can come between the `PUSHF` and the `CALL`.
 
 ### A USB keyboard: claimed, reported, and then nothing
 
