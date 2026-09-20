@@ -100,7 +100,9 @@ USB: 1 line(s)
 ## What this card is, measured
 
 A **PicoMEM 1 in a Gateway 2000 386SX/25** (MS-DOS 6.22, no 387), measured on
-2026-09-20. The card is the boot disk and carries the network, which is what
+2026-09-20. Everything here has since been re-run with a **PicoMEM 2**, in
+that machine and in the **NEC V30** box as well -- three configurations, and
+the tools are identical across all of them. The card is the boot disk and carries the network, which is what
 every hazard below is about.
 
 The **same machine later took the PicoMEM 2**, so everything here has a
@@ -404,14 +406,17 @@ two cards. Everything in this folder runs on it unchanged.
 **The newer card is not faster, at anything, by any margin worth the word.**
 Every row is inside 1%, and three of them inside a tenth of a percent -- on a
 tool whose repeatability is 0.1%, so this is a real null and not a noisy one.
-The PicoMEM 2 is an RP2350 at a higher clock than the 1's RP2040, and it buys
-nothing here, because **what is being measured is the ISA bus, not the
-microcontroller**. An 8-bit ISA cycle takes what it takes; the card's job is
-to answer within it, and both cards already do.
+The PicoMEM 2 is an RP2350 at a higher clock than the 1's RP2040, and on this
+machine it buys nothing: **the card's microcontroller is not the limit.**
 
-That is the same shape as the finding in `CH375Net`, where a machine four to
-five times faster left the USB packet rate exactly where it was. Twice now,
-the thing that looked like the bottleneck was the bus.
+**What the limit actually is took a third machine to settle, and the first
+answer here was wrong.** This section originally concluded "what is being
+measured is the ISA bus, not the microcontroller" -- an 8-bit cycle takes
+what it takes, both cards answer within it, done. That explanation makes a
+prediction: put the same card in a machine four times slower and the card's
+rows should barely move, because the bus is the bus.
+
+They moved. See below.
 
 Two real differences did turn up, both in the firmware rather than the
 silicon:
@@ -439,6 +444,45 @@ still gets no pointer without an `INT 33h` driver.
 And the thumb drive is named on both: `1: USB Disk 979.5 MB USB 2.0  Flash
 Disk`. On the PicoMEM 2 that answer comes back through `PMPROBE` too, which
 before this work read `USB: 0 line(s)` on the other card.
+
+### The same card in a four-times-slower machine, and the prediction failing
+
+`PMBENCH` with the PicoMEM 2 moved into the NEC V30 box, three runs again:
+
+| | V30 | 386SX | ratio |
+|---|---|---|---|
+| card I/O port read | 36,173/s | 130,101/s | 3.6x |
+| card RAM word read | 39,829/s | 145,114/s | 3.6x |
+| card ROM word read | 39,829/s | 145,147/s | 3.6x |
+| the PC's own RAM | 44,747/s | 182,097/s | 4.1x |
+| command round trip | 407 us | 96 us | 4.2x |
+| card RAM vs the PC's | **89%** | **79%** | |
+
+The card's rows scaled with the CPU, almost exactly in step with the PC's own
+memory. **If the ISA bus were the ceiling they would have held near 130,000
+and the ratio would have gone far above 100%.** Instead the card tracked the
+machine it was plugged into.
+
+So the honest reading is that **the loop is CPU-bound on both machines**. The
+card adds a modest fixed penalty per access -- 11% on the V30, 21% on the
+386SX -- and otherwise keeps up with whatever the CPU can issue. Neither the
+microcontroller nor the bus is the bottleneck anywhere in this table; the
+thing issuing the reads is.
+
+The ratio moving the *right* way is the confirmation: a fixed per-access cost
+is a smaller share of a slower machine's loop, so the card looks relatively
+better on the V30 (89%) than on the 386SX (79%). A bus ceiling predicts the
+opposite.
+
+One further correction. The original text called this "the same shape as the
+finding in `CH375Net`, where a machine four to five times faster left the USB
+packet rate exactly where it was. Twice now, the thing that looked like the
+bottleneck was the bus." That comparison was wrong twice over: CH375Net's
+ceiling is a genuine device limit -- one 64-byte packet per USB frame, which
+really does not move with the CPU -- and this one is not a ceiling at all.
+The CH375Net result is what a real ceiling looks like, and it is what makes
+the difference visible here: **that** number held across machines, and this
+one did not.
 
 ### What it costs to talk to
 

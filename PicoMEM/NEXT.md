@@ -133,11 +133,13 @@ for the moment" comment says it would.
   which is the one number that matters, because that is where the CH375 card
   lives and anything else there corrupts its reads. So a PicoMEM's EMS and a
   CH375 can share a machine. That is worth knowing and has not been tested.
-* ~~`PMBENCH` against the PicoMEM 2.~~ **Done, 2026-09-20, in the same
-  386SX.** Every row inside 1%, three of them inside a tenth of a percent:
-  the RP2350 buys nothing, because the measurement is of the ISA bus and not
-  of the microcontroller. The README has the table. What the newer firmware
-  did change: the answers area (+374 to +886) and a cleaner OPL2 status.
+* ~~`PMBENCH` against the PicoMEM 2.~~ **Done, 2026-09-20**, in the 386SX and
+  then again in the V30. Two cards in one machine are indistinguishable --
+  every row inside 1% -- so the microcontroller is not the limit. But one
+  card in two machines scaled with the CPU, 3.6x against the machines' 4.1x,
+  which **disproved the first explanation**: it is not the ISA bus either.
+  The loop is CPU-bound, and the card costs a fixed 11-21% per access on top.
+  The README has all three columns and the retraction.
 * **The 8259 and the card's IRQ.** `BV_IRQ` says 7 and nothing here watches
   it. The card fires a multiplexed interrupt for its own purposes; a tool
   that counted them over a minute would say whether it is idle.
