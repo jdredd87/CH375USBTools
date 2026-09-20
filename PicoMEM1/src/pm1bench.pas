@@ -125,7 +125,7 @@ var
   R: Byte;
   Bad: Word;
   Sum: LongInt;
-  SinkSeg, SinkOfs: Word;
+  Sg, Of_: Word;
   CardRam, PcRam: LongInt;
 begin
   Args;
@@ -159,12 +159,21 @@ begin
   Sum := Sum + B;
   Report('card I/O port read     ', Turns, Elapsed);
 
-  { 2. the card's emulated RAM, a word at a time }
+  { 2. the card's emulated RAM, a word at a time.
+
+    Every memory row below uses this ONE loop shape, with both the
+    segment and the offset in variables.  That is not fussiness: the
+    first version wrote the card's rows as MemW[seg : CONSTANT + i] and
+    the PC's as MemW[seg : variable + i], so the PC's loop did an extra
+    addition per turn that the card's did not, and the ratio between
+    them flattered the card.  An instrument has to do the same work on
+    both sides of the comparison it is making. }
   CardRam := 0;
+  Sg := PmRomSeg; Of_ := SHARED_OFS;
   Turns := 0;
   T0 := StartClock;
   while Ticks - T0 < TicksPer do begin
-    for J := 1 to BATCH do W := MemW[PmRomSeg : SHARED_OFS + (J and $FE)];
+    for J := 1 to BATCH do W := MemW[Sg : Of_ + (J and $FE)];
     Inc(Turns, BATCH);
   end;
   Elapsed := Ticks - T0;
@@ -173,24 +182,24 @@ begin
   CardRam := PerSecond(Turns, Elapsed);
 
   { 3. the card's BIOS ROM, the same loop }
+  Sg := PmRomSeg; Of_ := 0;
   Turns := 0;
   T0 := StartClock;
   while Ticks - T0 < TicksPer do begin
-    for J := 1 to BATCH do W := MemW[PmRomSeg : (J and $FE)];
+    for J := 1 to BATCH do W := MemW[Sg : Of_ + (J and $FE)];
     Inc(Turns, BATCH);
   end;
   Elapsed := Ticks - T0;
   Sum := Sum + W;
   Report('card ROM word read     ', Turns, Elapsed);
 
-  { 4. the PC's own RAM, read through the SAME far-pointer addressing
-    the three above use, so the only difference left is which chip
-    answers the bus cycle }
-  SinkSeg := Seg(Sink); SinkOfs := Ofs(Sink);
+  { 4. the PC's own RAM, through the same loop, so the only difference
+    left is which chip answers the bus cycle }
+  Sg := Seg(Sink); Of_ := Ofs(Sink);
   Turns := 0;
   T0 := StartClock;
   while Ticks - T0 < TicksPer do begin
-    for J := 1 to BATCH do W := MemW[SinkSeg : SinkOfs + (J and $FE)];
+    for J := 1 to BATCH do W := MemW[Sg : Of_ + (J and $FE)];
     Inc(Turns, BATCH);
   end;
   Elapsed := Ticks - T0;

@@ -128,6 +128,35 @@ The one disagreement is `D400h`, configured as card BIOS and live as card
 BIOS RAM: the configuration marks both halves of the 32 KB window as BIOS,
 and the firmware distinguishes them once it is running.
 
+### What is on its USB port
+
+The host runs on the Pico's **native controller, root port 0**
+(`CFG_TUH_RPI_PIO_USB 0`), which on a 1.x board is the micro-USB connector
+— the same one the card is flashed through. With a thumb drive on a
+micro-USB OTG adapter:
+
+```
+   USB  : 1 device
+    1: USB Disk 979.5 MB USB 2.0  Flash Disk
+```
+
+That is a **named** line, and it settles what the blank ones mean. The
+firmware writes a description only when one of its own class drivers claims
+a device: HID, mass storage, MIDI, XInput pads — `CFG_TUH_CDC` and
+`CFG_TUH_VENDOR` are both 0, so a USB Ethernet adapter or a camera is
+enumerated and then ignored, and the empty line the PicoMEM 2 gave for an
+Ethernet adapter meant *nothing claimed it*, not *nothing was seen*. Here
+the mass storage driver claimed the drive, ran a SCSI inquiry for the vendor
+and product strings, mounted its filesystem and reported its size.
+
+**DOS does not get a new drive out of it.** The volume is mounted inside the
+card as its own second filesystem, beside the SD card, where it is available
+as a *source of disk images* rather than as a drive. `HWINFO` still reports
+the same four, and the card's own disk list is unchanged.
+
+`BV_USBDevice`, the byte `PM1INFO` prints as "USB devices", stays `00`: it
+tracks only mouse, keyboard and joystick, so a drive never appears in it.
+
 ### Which devices answer
 
 ```
@@ -161,27 +190,54 @@ than a nicety.
 
 ### What it costs to talk to
 
-`PM1BENCH` on the 386SX/25, timed off the BIOS tick:
+`PM1BENCH` on the 386SX/25, timed off the BIOS tick, three runs agreeing to
+better than a tenth of a percent:
 
 | | per second |
 |---|---|
-| card I/O port read | 134,663 |
-| card RAM word read | 179,896 |
-| card ROM word read | 189,538 |
-| the PC's own RAM, the same loop | 247,325 |
-| whole command round trip | 11,372 — 88 microseconds each |
+| card I/O port read | 129,228 |
+| card RAM word read | 145,049 |
+| card ROM word read | 145,114 |
+| the PC's own RAM, the same loop | 182,000 |
+| whole command round trip | 10,252 — 98 microseconds each |
 
-The card's emulated RAM reads at **72%** of the speed of the PC's own, which
-is the number that matters if you are thinking of using it as memory: a Pico
-answering an ISA cycle in software costs about a third more than the RAM on
-the motherboard, and no more than that. The memory rows use identical
-far-pointer addressing so that the only difference left is which chip
-answers the bus cycle — the first version compared `MemW[]` against a Pascal
-array index and was measuring the compiler, not the card.
+The card's emulated memory reads at **79%** of the speed of the PC's own,
+which is the number that matters if you are thinking of using the card as
+memory: a Pico answering an ISA cycle in software costs about a quarter more
+than the RAM on the motherboard, and no more than that.
 
-Expect a few percent of run-to-run variation. The Pico has a second core
-doing SD and WiFi work that nothing on the DOS side can see or schedule
-around.
+**All four rows use one identical loop**, with the segment *and* the offset
+in variables, and getting there took two corrections that are worth knowing
+about because both of them flattered the card:
+
+* the first version read the PC's RAM through a Pascal array index and the
+  card's through `MemW[]`. Those are different instruction sequences, so it
+  was partly measuring the compiler.
+* the second version used `MemW[]` for both, but wrote the card's offsets as
+  *constant + i* and the PC's as *variable + i* — one extra addition per
+  turn, on the PC's side only. It reported the card at 72% of the PC when it
+  is really at 79%, and it made the card's **ROM look 5% faster than its
+  RAM**, which is not a thing that can happen: the same chip answers both
+  the same way. Those two numbers being equal now is the check that the
+  instrument is straight.
+
+Repeatability is much better than expected — three consecutive runs inside
+0.1%, and a fourth set at a different tick budget agreeing to the same. One
+early run came out 9–15% high across every row at once and has not
+reproduced in seven attempts since; it is recorded here as a bad measurement
+rather than a discovery, because a uniform shift on all rows is the
+signature of the clock, not of anything the card did.
+
+### Does a busy card cost the PC anything?
+
+No, measurably. With a USB thumb drive mounted on the card — the firmware
+running its USB stack and a FatFs volume on its second core — the card's RAM
+reads and its command round trip are **within 0.5%** of the same figures
+taken with nothing plugged in at all. `BENCH`, the CPU-only benchmark that
+never touches the card, also matches this machine's recorded table row for
+row (`248721` and `30321` and `297260` identical to the figures taken before
+any of this work). The card does its own work on its own silicon and the PC
+does not pay for it.
 
 ## Hazards — read before adding a command
 

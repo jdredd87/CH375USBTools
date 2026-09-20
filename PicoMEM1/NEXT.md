@@ -34,21 +34,27 @@ dump pulled back to Windows and checked byte for byte.
 PicoMEM2's `PMPROBE` and `PMUSB` reported nothing at all on this card while
 reporting success. Both now call `FindParam`. See the README.
 
-**Not tried, because nothing was plugged in:** the USB host. This board
-family can have one and this card's firmware has it enabled
-(`EnableUSB` is 1, `USBInit` is ok), but the port was empty all session, so
-every USB answer here is `0 devices`. `PM1STAT /S=n` exists precisely for
-somebody who can plug something in and watch — start there.
+**The USB host works.** A thumb drive on a micro-USB OTG adapter came back
+as `1: USB Disk 979.5 MB USB 2.0  Flash Disk` — a named line, which settles
+that the blank line an Ethernet adapter gives means *unclaimed*, not
+*unseen*. The host is the Pico's native controller on root port 0, which on
+this board is the micro-USB connector it is flashed through. DOS gets no new
+drive from it: the card mounts the volume inside itself as a source of disk
+images. See the README.
 
 ## Ideas not done
 
-* **A PicoMEM 1 with a device on its USB port.** The first real question:
-  does the stock firmware describe it? On the PicoMEM 2 a network adapter
-  enumerated as *one device with an empty description*, because a
-  description is only written when one of the firmware's own class drivers
-  claims it — HID, mass storage, MIDI, game pads. A USB mouse or keyboard
-  should therefore produce a *named* line here where an Ethernet adapter
-  produces a blank one. That is a ten-minute test and it has not been done.
+* **A USB mouse or keyboard on that port.** The thumb drive proved the host
+  and the naming; HID is the interesting one that is left, because the
+  firmware has mouse and keyboard emulation of its own and `BV_USBDevice`
+  has bits for them. Two questions in one plug: does the byte `PM1INFO`
+  prints as "USB devices" light bit 0 or 1, and can **DOS itself** then see
+  a pointer — `C:\TOOLS\MOUSE.EXE` from the DOSBridge kit answers the
+  second in one run. That would be the card doing something useful rather
+  than only reporting.
+* **A hub.** `CFG_TUH_HUB` is 1 and nothing has ever tested one. Two devices
+  at once would also exercise the multi-line answer, which has only ever
+  been seen with a single entry.
 * **The AdLib, heard rather than detected.** `PM1OPL` proves the OPL2
   answers and plays a scale, and nothing on the DOS side can tell whether a
   sound came out — the card's audio output is its own hardware. Somebody
@@ -66,7 +72,8 @@ somebody who can plug something in and watch — start there.
   lives and anything else there corrupts its reads. So a PicoMEM's EMS and a
   CH375 can share a machine. That is worth knowing and has not been tested.
 * **`PM1BENCH` against the PicoMEM 2.** The numbers in the README are one
-  card on one machine. The 2 is an RP2350 at a higher clock on a different
+  card on one machine, and now that the instrument does identical work on
+  both sides of its comparison they are worth something. The 2 is an RP2350 at a higher clock on a different
   bus interface; the same tool runs on it unchanged, and the comparison
   would say something real about what the newer board bought.
 * **The 8259 and the card's IRQ.** `BV_IRQ` says 7 and nothing here watches
