@@ -32,10 +32,22 @@ also run one on the DOS machine over DOSBridge.
 
 ## What it found on this machine
 
-The card read here is a **PicoMEM 2 in the 8086-class box** (NEC V30, MS-DOS
-6.22). The other machine in use, a Gateway 2000 386SX/25, has a PicoMEM **1**
-in it -- these tools work on either, but the board id and firmware below are
-the 2's.
+The card read here is a **PicoMEM 2**, first in the 8086-class box (NEC V30)
+and, since 2026-09-20, in the **Gateway 2000 386SX/25** as well -- swapped in
+so that both cards could be measured in one machine. The comparison lives in
+[PicoMEM1's README](../PicoMEM1/README.md), and the short version is that the
+newer card is **not faster at anything**: every row is inside 1%, because what
+an ISA access measures is the bus, not the microcontroller answering it.
+
+Two things did change with the firmware, and both matter here: the answers
+area moved (+374 on the 2025-11-02 BIOS, +886 on this one), and the OPL2
+emulation's status bytes went from `06`/`C6` to the textbook `00`/`C0`.
+
+With a USB thumb drive on the USB-A port, `PMPROBE` now reports a **named**
+device -- `1: USB Disk 979.5 MB USB 2.0  Flash Disk` -- where the Ethernet
+adapter below produced a blank line. That is the difference between a device
+one of the firmware's class drivers claims and one it does not, demonstrated
+rather than inferred.
 
 ```
 BIOS     : answered INT 13h AH=60h -- base 02A0h, ROM at D000h, device mask 070Eh

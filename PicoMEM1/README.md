@@ -289,6 +289,53 @@ waits the same 80 microseconds on a V30 and on a 386, which is a
 codebase](https://github.com/jdredd87/DOSBridge/blob/main/CLAUDE.md) rather
 than a nicety.
 
+### The same tools on a PicoMEM 2, in the same machine
+
+The PicoMEM 2 was swapped into this 386SX on 2026-09-20, which is the
+comparison the numbers above were waiting for: one machine, one CPU, one bus,
+two cards. Everything in this folder runs on it unchanged.
+
+| | PicoMEM 1 | PicoMEM 2 |
+|---|---|---|
+| BIOS date, from the ROM | 2025-11-02 | 2026-06-16 |
+| board id | not reported (0) | 11 |
+| answers area | +886 would be wrong -- it is at **+374** | **+886** |
+| AdLib status bytes | `06` then `C6` | `00` then `C0` |
+| blocks emulated | 2 (`D000h`, `D400h`) | the same 2 |
+| card I/O port read | 129,228/s | 130,101/s |
+| card RAM word read | 145,049/s | 145,114/s |
+| card ROM word read | 145,114/s | 145,147/s |
+| the PC's own RAM | 182,000/s | 182,097/s |
+| command round trip | 98 us | 96 us |
+| card RAM vs the PC's | 79% | 79% |
+
+**The newer card is not faster, at anything, by any margin worth the word.**
+Every row is inside 1%, and three of them inside a tenth of a percent -- on a
+tool whose repeatability is 0.1%, so this is a real null and not a noisy one.
+The PicoMEM 2 is an RP2350 at a higher clock than the 1's RP2040, and it buys
+nothing here, because **what is being measured is the ISA bus, not the
+microcontroller**. An 8-bit ISA cycle takes what it takes; the card's job is
+to answer within it, and both cards already do.
+
+That is the same shape as the finding in `CH375Net`, where a machine four to
+five times faster left the USB packet rate exactly where it was. Twice now,
+the thing that looked like the bottleneck was the bus.
+
+Two real differences did turn up, both in the firmware rather than the
+silicon:
+
+* **The answers area moved**, which is the whole story at the top of this
+  file, and `FindParam` now has both directions confirmed on hardware --
+  +374 on the older BIOS, +886 on the newer, neither of them assumed.
+* **The OPL2 emulation got cleaner.** The PicoMEM 1 returns `06` and `C6`
+  where a real chip returns `00` and `C0`; the PicoMEM 2 returns exactly
+  `00` and `C0`. Invisible to any detection that masks with `E0`, as every
+  correct one does -- and a trap for anything comparing whole bytes.
+
+And the thumb drive is named on both: `1: USB Disk 979.5 MB USB 2.0  Flash
+Disk`. On the PicoMEM 2 that answer comes back through `PMPROBE` too, which
+before this work read `USB: 0 line(s)` on the other card.
+
 ### What it costs to talk to
 
 `PM1BENCH` on the 386SX/25, timed off the BIOS tick, three runs agreeing to

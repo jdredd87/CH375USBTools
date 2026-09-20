@@ -130,9 +130,17 @@ begin
       4: Write(' (PicoMEM 1.4)');
       9: Write(' (PicoMEM 1.5)');
      10: Write(' (PicoMEM 2)');
+     11: Write(' (a PicoMEM 2, later than the published model list)');
     end;
     WriteLn(', pico id ', P);
-    WriteLn('  firmware    : revision ', Hex4(W));
+    { The revision word is zero on both firmwares seen so far -- the
+      2025-11-02 BIOS and the 2026-06-16 one -- so it is reported as
+      absent rather than as version zero.  The ROM's own date string,
+      which PM1INFO prints above, is the identifier that works. }
+    if W = 0 then
+      WriteLn('  firmware    : revision not reported; go by the BIOS date')
+    else
+      WriteLn('  firmware    : revision ', Hex4(W));
   end;
 end;
 

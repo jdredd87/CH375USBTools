@@ -97,11 +97,11 @@ for the moment" comment says it would.
   which is the one number that matters, because that is where the CH375 card
   lives and anything else there corrupts its reads. So a PicoMEM's EMS and a
   CH375 can share a machine. That is worth knowing and has not been tested.
-* **`PM1BENCH` against the PicoMEM 2.** The numbers in the README are one
-  card on one machine, and now that the instrument does identical work on
-  both sides of its comparison they are worth something. The 2 is an RP2350 at a higher clock on a different
-  bus interface; the same tool runs on it unchanged, and the comparison
-  would say something real about what the newer board bought.
+* ~~`PM1BENCH` against the PicoMEM 2.~~ **Done, 2026-09-20, in the same
+  386SX.** Every row inside 1%, three of them inside a tenth of a percent:
+  the RP2350 buys nothing, because the measurement is of the ISA bus and not
+  of the microcontroller. The README has the table. What the newer firmware
+  did change: the answers area (+374 to +886) and a cleaner OPL2 status.
 * **The 8259 and the card's IRQ.** `BV_IRQ` says 7 and nothing here watches
   it. The card fires a multiplexed interrupt for its own purposes; a tool
   that counted them over a minute would say whether it is idle.
