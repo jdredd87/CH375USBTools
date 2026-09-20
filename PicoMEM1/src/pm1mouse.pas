@@ -173,17 +173,26 @@ begin
   while (Ticks - T0 < Dur) and (Ticks >= T0) do ;
 end;
 
-{ Rising: your turn.  Falling: done, stop moving it. }
+{ A siren, not a polite pair of pips.  The first version was two short
+  tones and was missed every time: whoever has a hand on the mouse is
+  not reading the terminal this prints on, and by the time a short cue
+  registers the window has already started.  Two seconds of warble,
+  then a pause to get a hand in place.  PM1WATCH uses the same two. }
 procedure BeepStart;
+var I: Integer;
 begin
   if not DoBeep then Exit;
-  Tone(660, 3); Quiet(1); Tone(990, 4);
+  for I := 1 to 8 do begin
+    Tone(880, 3);
+    Tone(1320, 3);
+  end;
+  Quiet(9);
 end;
 
 procedure BeepEnd;
 begin
   if not DoBeep then Exit;
-  Tone(990, 3); Quiet(1); Tone(660, 4);
+  Tone(1320, 3); Quiet(1); Tone(880, 3); Quiet(1); Tone(660, 6);
 end;
 
 function Sgn8(B: Byte): Integer;

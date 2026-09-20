@@ -301,6 +301,8 @@ two cards. Everything in this folder runs on it unchanged.
 | board id | not reported (0) | 11 |
 | answers area | +886 would be wrong -- it is at **+374** | **+886** |
 | AdLib status bytes | `06` then `C6` | `00` then `C0` |
+| a mouse is described as | `USB mouse` | `Mouse` |
+| mouse deltas and buttons | yes | yes |
 | blocks emulated | 2 (`D000h`, `D400h`) | the same 2 |
 | card I/O port read | 129,228/s | 130,101/s |
 | card RAM word read | 145,049/s | 145,114/s |
@@ -331,6 +333,18 @@ silicon:
   where a real chip returns `00` and `C0`; the PicoMEM 2 returns exactly
   `00` and `C0`. Invisible to any detection that masks with `E0`, as every
   correct one does -- and a trap for anything comparing whole bytes.
+* **The device descriptions were reworded.** A mouse is `Mouse` on the
+  2026-06-16 firmware and `USB mouse` on the 2025-11-02 one, while the
+  published source of 2026-09-11 says `USB mouse` -- so the wording changed
+  after the newer card's firmware was built. Small, and useful: it is
+  independent evidence that the sources are newer than **both** firmwares,
+  which is what the keyboard conclusion below rests on. Do not pattern-match
+  on these strings; count the lines and read them.
+
+**The mouse works identically on both cards.** 349 changes in 25 seconds
+here, deltas to 65 counts, buttons reported -- the same end-to-end path, the
+same three bytes in the IRQ variables, and the same missing last mile: DOS
+still gets no pointer without an `INT 33h` driver.
 
 And the thumb drive is named on both: `1: USB Disk 979.5 MB USB 2.0  Flash
 Disk`. On the PicoMEM 2 that answer comes back through `PMPROBE` too, which
