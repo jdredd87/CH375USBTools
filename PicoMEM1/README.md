@@ -30,6 +30,7 @@ nothing here is a port of anything.
 | `PM1OPL` | plays a scale through the AdLib the card emulates, after proving an OPL2 is there by its timers |
 | `PM1BENCH` | what the card costs: port reads, its RAM and ROM against the PC's own, and a whole command round trip |
 | `PM1MOUSE` | turns on the card's mouse reporting, watches the deltas and buttons arrive in its shared memory while you move a USB mouse, and turns it off again. **Beeps** when it wants your hand on the mouse |
+| `PM1WATCH` | watches **all 8 KB** of the shared memory, twenty times a second, and reports every byte that moved. The tool for "is there an answer anywhere, and where?" — and `/T` makes it prove it can see one |
 | `PM1DUMP` | the 16 KB ROM and 8 KB shared memory to a file. **Blanks the WiFi key by default** |
 
 `build.cmd` builds them all; `build.cmd info`, `cfg`, `mem`, `dev`, `stat`,
@@ -195,6 +196,45 @@ actively-reporting mouse leaving it at zero is that comment demonstrated.
 An earlier draft of this project proposed checking that byte to see whether
 a mouse had been claimed; it would never have worked, and the source said so
 before the test did.
+
+### A USB keyboard: claimed, reported, and then nothing
+
+The card claims a USB keyboard and says so -- `PM1STAT` prints `1: USB
+keyboard` exactly as it does for a mouse. Nothing else happens, and the
+firmware says why before the hardware does:
+
+| | defined | actually used |
+|---|---|---|
+| `IRQ_R_MOUSE` | `isa_irq.h` | **raised**, `pm_cmd.cpp:2193` |
+| `IRQ_R_KEYBOARD` | `isa_irq.h` | **nowhere** |
+| `KEYB_Enabled` | declared, set true, set false | **never read** |
+
+Command `54h` turns keyboard reporting on and off and its flag is consumed by
+nothing at all; the interrupt source reserved for keystrokes is a `#define`
+and no more. The published sources are also **newer** than the BIOS on this
+card, so a feature missing there is certainly missing here.
+
+Demonstrated rather than argued. With `54h` sent and accepted, `PM1WATCH`
+swept all 8192 bytes 246 times over 22 seconds of typing:
+
+```
+keyboard reporting on (54h): ok
+246 sweeps of 8192 bytes in 22 seconds
+NOT ONE BYTE of the card's shared memory changed.
+```
+
+**A null result is worth exactly what the instrument is worth**, so the same
+tool has a `/T` that proves it can see a write: it asks for the USB list,
+snapshots, then asks for the disk list mid-watch, and the two answers differ.
+That reports 28 changed offsets from `+374` onwards, the count byte going
+`02` to `04` as two USB lines become four disk lines.
+
+That self-test earned its place immediately. Its **first** version sent the
+same query twice and reported nothing at all -- re-asking rewrites
+byte-for-byte identical text, and a watcher looking for changed *values*
+cannot see a write that changes none. It would have handed back the
+keyboard's "nothing changed" as a true negative, with a broken instrument
+behind it.
 
 ### Which devices answer
 

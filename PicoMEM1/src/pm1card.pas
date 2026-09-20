@@ -71,6 +71,15 @@ const
   CMD_MOUSE_ON   = $52;
   CMD_MOUSE_OFF  = $53;
 
+  { Keyboard reporting on and off, the same three-line shape.  Allowed
+    so that PM1WATCH can demonstrate the negative WITH the switch turned
+    on rather than argue it from reading alone: in the published
+    firmware nothing ever reads the flag this sets, and
+    IRQ_R_KEYBOARD -- the interrupt source reserved for keystrokes -- is
+    defined in a header and raised nowhere.  Compare IRQ_R_MOUSE, which
+    is raised and does work. }
+  CMD_KEYB_ONOFF = $54;
+
   SHARED_OFS = $4000;     { shared memory = ROM segment + 16 KB }
   SHARED_LEN = 8192;
   CFG_OFS    = 82;        { the configuration block }
@@ -217,7 +226,7 @@ begin
   case Cmd of
     CMD_RESET, CMD_MEMTYPE, CMD_WIFI_INFO,
     CMD_USB_STATUS, CMD_DISK_STAT,
-    CMD_MOUSE_ON, CMD_MOUSE_OFF: Allowed := True;
+    CMD_MOUSE_ON, CMD_MOUSE_OFF, CMD_KEYB_ONOFF: Allowed := True;
   else
     Allowed := False;
   end;
@@ -270,6 +279,7 @@ begin
     CMD_DISK_STAT:  CmdName := 'disk status';
     CMD_MOUSE_ON:   CmdName := 'mouse reporting on';
     CMD_MOUSE_OFF:  CmdName := 'mouse reporting off';
+    CMD_KEYB_ONOFF: CmdName := 'keyboard reporting on/off';
   else
     CmdName := '?';
   end;

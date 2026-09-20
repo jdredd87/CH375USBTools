@@ -34,6 +34,12 @@ dump pulled back to Windows and checked byte for byte.
 PicoMEM2's `PMPROBE` and `PMUSB` reported nothing at all on this card while
 reporting success. Both now call `FindParam`. See the README.
 
+**PM1WATCH exists**, and it is the tool to reach for whenever the question is
+"does anything happen, and where?" -- it watches all 8 KB rather than a place
+somebody guessed. Its `/T` self-test is not decoration: the first version of
+it sent one query twice, rewrote identical bytes and reported nothing, which
+would have made a broken watcher look like a true negative.
+
 **The USB host works.** A thumb drive on a micro-USB OTG adapter came back
 as `1: USB Disk 979.5 MB USB 2.0  Flash Disk` — a named line, which settles
 that the blank line an Ethernet adapter gives means *unclaimed*, not
@@ -62,11 +68,14 @@ for the moment" comment says it would.
   such a driver (`PMMOUSE`), so it is known to be possible; this would be
   ours, and it would work on a PicoMEM 2 unchanged. Read `CH375Mouse`'s
   resident structure first -- it already solves the INT 33h half.
-* **A USB keyboard.** Command 54h switches keyboard reporting on and off the
-  same way, and the same IRQ structure almost certainly carries the
-  keystrokes -- but `pm_irq_svar_t` has no keyboard fields in it, so where
-  they land has not been worked out. Read the firmware before sending 54h;
-  it has not been added to the whitelist.
+* ~~A USB keyboard.~~ **Answered: this firmware has no keyboard path at
+  all.** The card claims the device and reports `1: USB keyboard`, but
+  `KEYB_Enabled` -- the flag command 54h sets -- is read by nothing, and
+  `IRQ_R_KEYBOARD` is defined in a header and raised nowhere, where
+  `IRQ_R_MOUSE` is raised and works. Demonstrated with 54h sent and
+  accepted: `PM1WATCH` swept all 8192 bytes 246 times through 22 seconds of
+  typing and not one byte moved. Nothing on the DOS side can change that;
+  it needs firmware, like everything else in the last section.
 * **A hub.** `CFG_TUH_HUB` is 1 and nothing has ever tested one. Two devices
   at once would also exercise the multi-line answer, which has only ever
   been seen with a single entry.
