@@ -56,7 +56,7 @@ toolchain, or somebody being at the machine.
 | **CH375Camera** | parked, working, and waiting for more cameras to try | [CH375Camera/NEXT.md](CH375Camera/NEXT.md) |
 | **CH375Net** | the packet driver's remaining ideas | [CH375Net/NEXT.md](CH375Net/NEXT.md) |
 | **CH375Audio, `DAKEYS`** | parked: it reads transport buttons off a USB speaker, and the speaker to hand has none. Needs one that does | [CH375Audio/CHANGELOG.md](CH375Audio/CHANGELOG.md) |
-| **The 8086 machine** | every project here was re-verified on the 386SX after the `VidFix` change; **the V30 has not been re-run since**. Same SD card and same tools, so it is a swap and a test pass, not a port | DOSBridge `CLAUDE.md` |
+| ~~The 8086 machine~~ | **done 2026-09-20.** Both machines now pass: the starter suite, every demo, 38 of 38 video modes, the PicoMEM tools on both cards, and on the CH375 a full `ATI4` off the modem plus `FOSTEST` at 57/0 | DOSBridge `CLAUDE.md` |
 
 Read the project's own `NEXT.md` before starting on it. Each one carries the
 dead ends as well as the plan, which is most of what they are for.

@@ -58,6 +58,63 @@ that most callers ignore.
 
 ---
 
+## Every switch the driver takes
+
+They were nowhere in this file until 2026-09-20, and one of them is a trap.
+
+| | |
+|---|---|
+| `@nnn` | CH375 I/O base in hex, default 260 |
+| `/C` | the **CH375** transport: a real modem on a USB-to-serial adapter |
+| `/D=n` | **the serial baud rate.** 9600 by default |
+| `/P` | the **TCP** transport: a socket presented as a COM port |
+| `/V=n` | packet driver vector, hex, for `/P`. The driver will not guess it |
+| `/I=a.b.c.d` | our own IP, for `/P` |
+| `/H=a.b.c.d` | a host to seed one ARP entry with, for `/P` |
+| `/G=a.b.c.d` | gateway, for `/P` |
+| `/T=n` | TCP port to listen on, for `/P` |
+| `/L` | **loopback**, and the default -- what you get with no switches at all |
+| `/B=n` | loopback bytes per tick. **Not baud.** See below |
+| `/R=n` | timer divisor, 1 to 16: how often the driver polls |
+| `/S` | print status and exit |
+| `/U` | uninstall |
+
+**`/B` is not the baud rate, and it looks exactly like it is.** It sets the
+loopback transport's byte rate and is ignored by `/C` and `/P`. Asking for
+`/C /B=38400` loads the CH375 transport at the default 9600 and reports
+`baud 9600` in its banner, which is the only thing that gives it away. The
+baud switch is `/D`. Caught on the V30, by reading the banner rather than
+trusting the command line:
+
+```
+FOSSIL.COM /C /B=38400  ->  Transport: CH375 ... baud 9600   batch 32
+FOSSIL.COM /C /D=38400  ->  Transport: CH375 ... baud 38400  batch 48
+```
+
+**Unloading is not tidiness.** The driver takes `INT 08h` and divides the
+PIT, so a driver left loaded changes the timer rate for everything after it
+-- including anything that measures. `/U` refuses if something hooked `INT
+08h` or `INT 14h` afterwards, rather than restoring a vector that is no
+longer its own.
+
+## Verified on both machines
+
+Re-run end to end on the **NEC V30** on 2026-09-20, after the `VidFix`
+change and the move to a single merged PicoMEM project, with a USRobotics
+Courier on a Keyspan `06CD:0121`:
+
+| | |
+|---|---|
+| `FOSDET`, no driver loaded | declines to call `AH=04h`, as designed |
+| `FOSDET`, driver loaded | names itself, buffers and free counts consistent |
+| `FOSTEST` over loopback | **57 passed, 0 failed** -- every `INT 14h` function |
+| `FOSAT` over CH375 at 9600 | `ATI4`, 1052 bytes, 617 B/s |
+| `FOSAT` over CH375 at 38400 | `ATI4`, 1052 bytes, **1196 B/s** |
+
+That last figure is the number this README already documented for 38400,
+reproduced to the byte on a different day after a year's worth of changes to
+everything around it. Nothing about the transport moved.
+
 ## The two transports
 
 | | what it is | what it needs that we do not have |
