@@ -39,7 +39,7 @@ program camlive;
 
 {$MODE OBJFPC}{$H-}{$ASMMODE INTEL}
 
-uses ch375, chtool, cit, camgrab, camdisp, camfile, camfast;
+uses ch375, chtool, cit, camgrab, camdisp, camfile, camfast, vidfix;
 
 const
   VER = '0.6.0';
@@ -134,6 +134,7 @@ begin
       'K': Ready := True;
       'O': begin SavePfx := V; Ok := (V <> '') and (Length(V) <= 60); end;
       'B': begin Ok := (C = 0) and (N >= 0) and (N <= 63); Brightness := N; end;
+      'L': ;            { /L: phase log, handled in the main body }
     else
       Ok := False;
     end;
@@ -602,16 +603,43 @@ begin
   end;
 end;
 
+{ /L: write each phase to C:\WORK\CAMLIVE.LOG, closing the file every
+  time, so a machine that dies mid-run still says where it got to. }
+var
+  Logging: Boolean = False;
+
+procedure Log(const S: string);
+var F: Text;
 begin
+  if not Logging then Exit;
+  Assign(F, 'C:\WORK\CAMLIVE.LOG');
+  {$I-} Append(F); {$I+}
+  if IOResult <> 0 then begin Assign(F, 'C:\WORK\CAMLIVE.LOG'); Rewrite(F); end;
+  WriteLn(F, S);
+  Close(F);
+end;
+
+begin
+  Logging := ParamStr(1) = '/L';
+  if not Logging then
+    for R := 1 to ParamCount do if ParamStr(R) = '/L' then Logging := True;
+  Log('--- CAMLIVE start');
+  Log('vidfix : ' + VidFixReport);
+  Log('  from ' + Num(VidFixFrom shr 16) + ':' + Num(VidFixFrom and $FFFF) +
+      '  to ' + Num(VidFixTo shr 16) + ':' + Num(VidFixTo and $FFFF));
   Banner('CAMLIVE', VER, 'the camera''s picture on the screen');
   if HelpWanted then begin Usage; Halt(0); end;
   ParseArgs;
   PortDat := Base; PortCmd := Base + 1;
 
+  Log('CamStart');
   R := CamStart(ModeNo, 0);
   if R <> 0 then Halt(R);
-  ButtonReset;                     { a press latched earlier is not ours }
+  Log('  CamStart ok, blanking ' + Num(BlankRun));
+  ButtonReset;
+  Log('  ButtonReset done');                     { a press latched earlier is not ours }
 
+  Log('DispOpen');
   if not DispOpen(DispK, Colour) then
   begin
     CamStop;
@@ -628,11 +656,13 @@ begin
     DispClose;
     DispOpen(Disp, False);
   end;
-  BuildMap;
-  BuildQuant;
-  BuildYuvTables;
-  BuildCorners;
-  LinearLut;
+  Log('  DispOpen ok');
+  Log('BuildMap');       BuildMap;
+  Log('BuildQuant');     BuildQuant;
+  Log('BuildYuvTables'); BuildYuvTables;
+  Log('BuildCorners');   BuildCorners;
+  Log('LinearLut');      LinearLut;
+  Log('  tables built');
 
   Pictures := 0; Saves := 0;
   if Ready then
@@ -645,6 +675,7 @@ begin
   while not Stop do
   begin
     TP := Ticks;
+    Log('picture: GrabPicture');
     if Paint then Inc(Bad, GrabPicture(@DrawStrip, 6))
     else
     begin
@@ -653,15 +684,19 @@ begin
         one more -- measured, a 320x240 picture went from 1.7 s to 3.4 s
         of capture with nothing but ASCII drawn between the strips }
       Inc(Bad, GrabPicture(@StripTaken, 6));
+      Log('  grabbed; DrawStrip');
       { once every strip is in, the picture is whole: draw it line by line
         across the full width -- fewer, longer rows than strip by strip,
         and the screen fills top to bottom }
       DrawStrip(0, Mode.W);
+      Log('  drawn');
       PollButton;
     end;
     LastPicMs := (Ticks - TP) * 55;
     Inc(Pictures);
+    Log('  StretchLut');
     StretchLut;
+    Log('  Status');
     Status(' ' + Num(Pictures) + '  ' + Num(Mode.W) + 'x' + Num(Mode.H) +
            ' /F' + Num(Stride) + '  ' + Num(LastPicMs) + ' ms ');
     PollButton;
@@ -672,7 +707,9 @@ begin
       Save;
       Status(' BUTTON: saved ' + SavePfx + Num(Saves) + '.BMP ');
     end;
+    Log('  Keys');
     Keys;
+    Log('  hold');
     { hold the picture -- the last one too, or /N=1 shows it for no time }
     THold := Ticks + LongInt(HoldS) * 182 div 10;
     while (not Stop) and (Ticks < THold) do

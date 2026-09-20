@@ -7,7 +7,7 @@ program fasttest;
 
 {$MODE OBJFPC}{$H-}
 
-uses ch375, camfast;
+uses ch375, camfast, vidfix;
 
 const
   N = 320;

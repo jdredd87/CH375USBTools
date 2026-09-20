@@ -95,7 +95,9 @@ var
 
 implementation
 
-uses ch375;
+uses ch375, vidfix;   { vidfix: FPC's runtime can hook INT 10h with a coprocessor stub,
+                           which wedges a 386 that has no 387 on the first video
+                           call. Inert on a V30 and on anything with an FPU. }
 
 var
   TxtDac: array[0..15] of Byte;     { DAC entry behind each text colour }

@@ -374,6 +374,37 @@ about 14 KB instead of 5 KB — and nobody who does not use `/F` pays for it.
 Larger than either single driver, which is the price of both halves plus a
 full INT 33h implementation in one image.
 
+## Adapters and devices it has been used with
+
+| | |
+|---|---|
+| **PS2toUSB Adapter** `0E8F:0020`, low speed, two HID boot interfaces (keyboard 03/01/01, mouse 03/01/02) | **keyboard half proven**, mouse half **not yet** -- see below |
+
+Measured on the 386 + PicoMEM 1 box, 2026-09-20, CH375 at 260h:
+
+* `USBCOMBO /T` self-test: both delivery paths intact.
+* `COMBOTST`: 40 of 40 checks.
+* A real PS/2 **keyboard** through the adapter: **305 keys** reached
+  INT 16h, none dropped.
+* A real PS/2 **optical mouse** through the adapter: nothing at all. Not a
+  driver fault, and the evidence is at the USB level rather than ours --
+  `USBPOLL /E=2 /I=1` polled the mouse endpoint 1177 times in 40 seconds
+  and got **1177 NAKs, 0 packets, 0 errors**. A NAK is the endpoint saying
+  it has nothing to report, so the adapter is answering and the PS/2 side
+  is producing no data.
+
+  Three things to check before suspecting anything here, in order: the
+  mouse is in the GREEN socket (a swap gives exactly this -- keyboard fine,
+  mouse silent), the adapter was re-plugged into USB with both devices
+  already attached (these adapters usually read their PS/2 ports only at
+  power-up), and the mouse really speaks PS/2. Retest with a plain ball
+  mouse; that is the open item.
+
+**A trap while testing this.** `USBPOLL` stops on any key in the BIOS ring,
+and keys typed through the adapter MINUTES EARLIER are still sitting in it
+-- the poll exited "after 0s" twice before that was understood, each run
+eating one stale keystroke. Flush the ring first (head := tail at 40:1A).
+
 ## Testing
 
 Three layers, and they fail independently on purpose.

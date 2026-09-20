@@ -262,6 +262,31 @@ USBSCAN 1.0.0  --  find CH375 boards in the ISA I/O space
 
 ---
 
+## On a 286/386/486: the runtime hooks INT 10h
+
+Everything here is built for the plain 8086 and runs unchanged on a V30, a
+286, a 386 or a 486 -- with one trap that is not ours.
+
+Free Pascal's i8086 runtime installs a coprocessor-error handler at startup
+and, on a machine where it believes an x87 is present, puts it on **INT 10h**,
+the video BIOS vector. The handler starts with `FNSTSW`. With no coprocessor
+fitted that read gives 0 on an 8086/V30 and the handler chains harmlessly --
+but on a **386 with no 387** it reads back with bit 7 set, the handler takes
+its error path, and the video BIOS call never happens. The machine stops dead,
+printing nothing, because the output is still in a buffer.
+
+`CH375USBTOOLS/src/vidfix.pas` puts the vector back. It is pulled in by
+`chtool`, which nearly every program here uses, and named directly by the few
+that do not (`fasttest`, `ecmlink`, `usbget`, `usbvfy`, `rampchk`, the
+PicoMEM2 tools). It acts only when there is no coprocessor, the vector points
+inside the running program, the bytes are that stub, and the address it
+recovers is in ROM -- so it is inert everywhere else, and one binary is
+correct on every machine.
+
+It came from DOSBridge, where the same file lives in `starter/`; the two are
+kept identical on purpose. The long version, with the measurements, is in
+DOSBridge's `docs/hardware.md`.
+
 ## If your card is not at 260h
 
 `260h` is the CH375's own default and the address this was developed

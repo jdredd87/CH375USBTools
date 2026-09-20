@@ -47,7 +47,7 @@ program UsbVfy;
 
 {$MODE OBJFPC}{$H-}
 
-uses Net;
+uses Net, vidfix;
 
 const
   VER      = '1.0.0';

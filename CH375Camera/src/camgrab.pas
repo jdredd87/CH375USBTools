@@ -118,6 +118,12 @@ var
   PktStatus: Byte;         { the chip's status for the last token; FFh
                              if its interrupt never came }
 
+  { How many empty packets in a row count as vertical blanking, and the
+    token rate it was worked out from.  Measured by CamStart on the
+    machine it is running on -- see BLANK_MS in the implementation. }
+  BlankRun:  Integer;
+  TokensPer110ms: LongInt;
+
 { Pick a mode (1..NMODES), start the camera in it and put the stream up.
   Returns 0 or an exit code, having said why. }
 function CamStart(M: Integer; ClockDiv: Byte): Integer;
@@ -197,6 +203,51 @@ begin
   BuildPos;
 end;
 
+const
+  { Blanking is a SILENCE, and the number of empty packets that represents
+    depends on how fast this machine issues IN tokens.  On the V30 a token
+    costs about 0.44 ms, so the eight this used to be hard-coded to meant
+    roughly four USB frames of quiet.  A 386 issues them four to five times
+    faster, sees eight empties inside a normal gap BETWEEN LINES, and
+    declares every strip finished early: five strips MISS and 110 ms for a
+    capture that takes 1.7 s on the V30.  Measured 2026-09-19.
+
+    So CamStart works the number out from the machine's own token rate and
+    this is only the floor. }
+  BLANK_RUN = 8;
+  BLANK_MS  = 4;            { silence that counts as blanking }
+
+{ How many IN tokens can this machine issue in two BIOS ticks?
+
+  Run with the stream DOWN, so every token comes back empty and what is
+  measured is the cost of the loop itself rather than the camera's output.
+  Two ticks is about 110 ms, which is 250 tokens on the V30 and around a
+  thousand on a 386 -- plenty either way, and it costs a tenth of a second
+  once per capture.
+
+  BlankRun then means the same thing on every machine: BLANK_MS worth of
+  silence.  The floor keeps it sane if the measurement ever comes back
+  absurdly low. }
+procedure Calibrate;
+var
+  T0: LongInt;
+  N: LongInt;
+  Buf: array[0..79] of Byte;
+begin
+  T0 := MemL[$0040 : $006C];
+  while MemL[$0040 : $006C] = T0 do ;      { start on a tick edge }
+  T0 := MemL[$0040 : $006C];
+  N := 0;
+  while MemL[$0040 : $006C] - T0 < 2 do
+  begin
+    Pkt(Buf);
+    Inc(N);
+  end;
+  TokensPer110ms := N;
+  BlankRun := (N * BLANK_MS) div 110;
+  if BlankRun < BLANK_RUN then BlankRun := BLANK_RUN;
+end;
+
 function CamStart(M: Integer; ClockDiv: Byte): Integer;
 var R, Y: Integer;
 begin
@@ -227,6 +278,7 @@ begin
     Exit;
   end;
   SetRetry($00);
+  Calibrate;                   { stream still down: tokens come back empty }
   StreamGo;
   Drain(300);                  { let auto-exposure settle }
   CamStart := 0;
@@ -353,10 +405,6 @@ var
   Tick64: Byte = 0;
 
 const
-  { Empty packets in a row that count as vertical blanking rather than a
-    gap between lines.  A line takes about 1.1 ms and a packet about 1 ms,
-    so a gap is one or two; blanking is dozens. }
-  BLANK_RUN = 8;
   TAIL_SLACK = 8;
 
 { The frame's bytes are only COPIED while it arrives, into StripBuf, and
@@ -483,7 +531,7 @@ begin
     if L = 0 then
     begin
       Inc(Zeros);
-      if Zeros >= BLANK_RUN then
+      if Zeros >= BlankRun then
       begin
         if Started then FrameLost(0);
         Blank := True;

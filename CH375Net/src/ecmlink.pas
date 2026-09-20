@@ -31,7 +31,7 @@ program EcmLink;
 
 {$MODE OBJFPC}{$H-}
 
-uses Ch375, Ecm, Dos;             { Dos for GetEnv }
+uses Ch375, Ecm, Dos, vidfix;             { Dos for GetEnv }
 
 const
   VER = '1.0.0';

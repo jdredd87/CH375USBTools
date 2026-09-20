@@ -37,6 +37,9 @@ program RampChk;
 
 {$MODE OBJFPC}{$H-}
 
+uses vidfix;   { see vidfix.pas: the runtime can hook INT 10h }
+
+
 { A live sign of life, and it has to go to STDERR to be one.
 
   A bridge job runs with stdout redirected into OUT.TXT, so anything written

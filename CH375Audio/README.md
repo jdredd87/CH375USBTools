@@ -144,6 +144,23 @@ chance, and that is not what USB Audio Class devices do.
 
 ---
 
+## Devices it has been used with
+
+| | |
+|---|---|
+| **Jieli "UACDemoV1.0"** `4C4A:4155`, full speed, audio control + 3 streaming interfaces + HID | `DAPROBE`, `DAVOL` and `DAISO` all proven; `DAKEYS` **cannot be tested on it -- the speaker has no buttons** |
+
+Measured on the 386 + PicoMEM 1 box, 2026-09-20, CH375 at 260h: the
+topology decoded, feature units 2 and 5 found, volume and mute WRITTEN and
+read back (25% = -21.5 dB, mute on, unmute, 60% = -11.9 dB), and `DAISO`
+reproduced the isochronous result -- every transfer times out.
+
+`DAKEYS` says as much itself when nothing arrives: it cannot tell "nobody
+pressed" from "this device does not report". On a speaker with no transport
+buttons that is permanent, so the HID half of this project is still
+unproven on hardware. It wants a speaker or headset with play/pause and
+volume keys.
+
 ## The tools
 
 ### `DAPROBE` — decode the device

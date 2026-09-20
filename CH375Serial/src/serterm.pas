@@ -59,7 +59,9 @@ program serterm;
 
 {$MODE OBJFPC}{$H-}
 
-uses ch375, chtool, dser;
+uses ch375, chtool, dser, vidfix;   { vidfix: FPC's runtime can hook INT 10h with a coprocessor stub,
+                           which wedges a 386 that has no 387 on the first video
+                           call. Inert on a V30 and on anything with an FPU. }
 
 const
   VER = '0.2.0';

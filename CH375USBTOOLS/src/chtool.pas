@@ -63,6 +63,16 @@ procedure HelpBaseLine;
 
 implementation
 
+{ VidFix is pulled in here rather than added to every program's uses
+  clause, the way DOSBridge's About unit does it, because it has to run
+  BEFORE the program body. FPC's runtime can hook INT 10h with a
+  coprocessor stub, and on a 386 with no 387 the first video BIOS call
+  then wedges the machine; vidfix.pas puts the vector back, and is inert
+  on a V30 and on anything with an FPU.
+  FPC initializes a unit's dependencies first, so this is early enough. }
+uses vidfix;
+
+
 procedure Banner(const Prog, Ver, Purpose: ShortString);
 begin
   WriteLn(Prog, ' ', Ver, ' -- ', Purpose, ' -- ', AUTHOR);

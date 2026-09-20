@@ -5,6 +5,34 @@ CH375Camera -- StevenC -- https://github.com/jdredd87/CH375USBTools
 The version lives in the `VER` constant of each tool in `src/`. A release
 is: bump it, add an entry here, `build.cmd`, commit, `git tag -a`.
 
+## 0.2 -- 2026-09-20
+
+Everything here still works on the V30 it was written on; what changed is
+that it now also works on a **386**, where it did not.
+
+* **Blanking is measured in time, not packets.**  `BLANK_RUN = 8` counted
+  empty packets, and its own comment gave the assumption away: "a packet
+  about 1 ms".  That holds on a V30, where a token costs about 0.44 ms.  A
+  386 issues tokens four to five times faster, so eight empties fit inside
+  a normal gap BETWEEN LINES and every strip was declared finished early:
+  five strips MISS and a 110 ms "capture" where the V30 takes 1.7 s.
+  `CamStart` now measures the machine's own token rate -- 250 per 110 ms on
+  the V30, 1752 on the 386 -- and sets the threshold to `BLANK_MS` worth of
+  silence, with the old 8 as the floor.  `CAMSNAP` prints both numbers.
+* **`vidfix`**, shared with DOSBridge and pulled in through `chtool`: FPC's
+  runtime hooks INT 10h with a coprocessor stub, and on a 386 with no 387
+  the first video BIOS call never returns.  That is what froze `CAMLIVE` on
+  `DispOpen`, whose first statement asks the BIOS for the current mode.
+* **`CAMLIVE /L`** writes each phase to `C:\WORK\CAMLIVE.LOG`, closing the
+  file every time.  It is how the freeze above was found: the program
+  prints nothing on the way down because its output is still buffered, so
+  the only evidence that survives is a file that was closed.
+
+Measured on the 386 (PicoMEM 1, no coprocessor), camera on a CH375 at 260h:
+176x144 in 715 ms, 320x240 in 1815 ms, 352x288 in 2200 ms; `CAMLIVE` 12
+pictures in mode X with **0 strips missed**; every display mode -- VESA,
+mode X, 13h, 12h, 80x50, 80x25, ASCII -- and the button, 5 presses for 5.
+
 ## 0.1 -- 2026-09-18
 
 First version. An IBM PC Camera (`0545:8080`, Xirlink C-It, model 2) taking

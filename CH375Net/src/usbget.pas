@@ -48,7 +48,7 @@ program UsbGet;
 
 {$MODE OBJFPC}{$H-}
 
-uses Net, Tftp;
+uses Net, Tftp, vidfix;
 
 const
   VER       = '1.0.0';

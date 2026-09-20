@@ -130,6 +130,8 @@ begin
   camgrab.Idle := @Beat;
   WriteLn('mode   : ', Mode.W, 'x', Mode.H, ' ',
           Copy('BayerYUV  ', 1 + 5 * Ord(Mode.Fmt), 5));
+  WriteLn('speed  : ', TokensPer110ms, ' tokens per 110 ms, so blanking is ',
+          BlankRun, ' empty packets');
 
   T0 := Ticks;
   Bad := 0;
