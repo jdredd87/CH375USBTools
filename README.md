@@ -42,6 +42,25 @@ Each project has its own `README.md`, `CHANGELOG.md`, `build.cmd` and
 has no compiler for them, and for most people the `.COM` file is the thing
 they actually want.
 
+## Where to pick this up
+
+Everything below is real, unfinished work with its notes already written.
+Nothing here is blocked on thinking; most of it is blocked on a device, a
+toolchain, or somebody being at the machine.
+
+| | what is left | where the notes are |
+|---|---|---|
+| **PicoMEM mouse driver** | the resident half of an `INT 33h` driver. The mechanism is proven -- `PMIRQ` hooks the card's IRQ, chains to its BIOS handler and counts 35 mouse events a second. What remains is a TSR that keeps the accumulators, serves `INT 33h` and unhooks | [PicoMEM/NEXT.md](PicoMEM/NEXT.md) |
+| **PicoMEM USB pass-through** | a command group in the card's firmware (C0h-CFh) so DOS could drive a USB device through it. Needs an ARM toolchain and hands on the machine to flash | [PicoMEM/NEXT.md](PicoMEM/NEXT.md) |
+| **CH375Combo, the mouse half** | a PS/2 optical mouse through the adapter gives 1177 NAKs and no packets. Waiting on an old ball mouse to tell a protocol problem from a power one | [CH375Combo/README.md](CH375Combo/README.md) |
+| **CH375Camera** | parked, working, and waiting for more cameras to try | [CH375Camera/NEXT.md](CH375Camera/NEXT.md) |
+| **CH375Net** | the packet driver's remaining ideas | [CH375Net/NEXT.md](CH375Net/NEXT.md) |
+| **CH375Audio, `DAKEYS`** | parked: it reads transport buttons off a USB speaker, and the speaker to hand has none. Needs one that does | [CH375Audio/CHANGELOG.md](CH375Audio/CHANGELOG.md) |
+| **The 8086 machine** | every project here was re-verified on the 386SX after the `VidFix` change; **the V30 has not been re-run since**. Same SD card and same tools, so it is a swap and a test pass, not a port | DOSBridge `CLAUDE.md` |
+
+Read the project's own `NEXT.md` before starting on it. Each one carries the
+dead ends as well as the plan, which is most of what they are for.
+
 ## What works, and what does not
 
 | | DOS | Windows 3.0 | Windows 95 |
