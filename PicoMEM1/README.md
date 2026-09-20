@@ -83,9 +83,15 @@ USB: 1 line(s)
 
 ## What this card is, measured
 
-A **PicoMEM 1 in a Gateway 2000 386SX/25** (MS-DOS 6.22, no 387), which is
-the machine DOSBridge is currently driving. The card is the boot disk and
-carries the network, which is what every hazard below is about.
+A **PicoMEM 1 in a Gateway 2000 386SX/25** (MS-DOS 6.22, no 387), measured on
+2026-09-20. The card is the boot disk and carries the network, which is what
+every hazard below is about.
+
+The **same machine later took the PicoMEM 2**, so everything here has a
+matching run on the newer card -- the comparison is further down, and the
+short version is that it is not faster at anything. Which card is in which
+machine is a fact with a date on it, and `PM1INFO` reads the BIOS date out of
+the ROM rather than inferring it.
 
 ```
 BIOS      : answered -- base 02A0h, ROM D000h, devices 070Eh

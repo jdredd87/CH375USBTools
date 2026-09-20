@@ -53,17 +53,20 @@ ones. It is a 1987 machine, nine years older than USB, and almost every
 limitation in this guide is a fact about it rather than a shortcoming of the
 code.
 
-**A second machine has since been used**, a **Gateway 2000 386SX/25** with a
-PicoMEM 1 card, and every project here has been run on it: the drivers, the
+**A second machine has since been used**, a **Gateway 2000 386SX/25**, and
+every project here has been run on it: the drivers, the
 camera, the DisplayLink adapter, the modem and the FOSSIL. It is four to five
 times the Model 30 and it found two faults the 8086 never could -- see
 [On a 286/386/486](#on-a-286386486-the-runtime-hooks-int-10h). Everything
 below still describes the 8086, because that is what the code targets.
 
-That machine's PicoMEM 1 is itself read by [PicoMEM1](PicoMEM1/), the way
-the 8086 machine's PicoMEM 2 is by [PicoMEM2](PicoMEM2/) -- neither is about
-the CH375, and both are in this collection because the bridge that builds
-and tests everything here runs over those cards' WiFi.
+Both machines boot from a **PicoMEM** ISA card and reach the network through
+it, and the cards are swapped between them -- so which card is in which box
+is a fact with a date on it. [PicoMEM1](PicoMEM1/) and
+[PicoMEM2](PicoMEM2/) read them; neither is about the CH375, and both are in
+this collection because the bridge that builds and tests everything here runs
+over those cards' WiFi. `PM1INFO` identifies the card from the BIOS date in
+its ROM, which is the only reliable way to tell one from the other.
 
 ```
 Machine    IBM PS/2 Model 30 (8086)
