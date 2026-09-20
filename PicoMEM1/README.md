@@ -218,10 +218,20 @@ administered over and its registers are paged, so a read is not harmless.
 `PM1DEV` looks for the packet driver's `PKT DRVR` signature in the interrupt
 vector table instead, which proves the same thing by reading memory.
 
-**`PM1MEM /W` writes one byte per block, and only above C000h.** Below that
-is the PC's own RAM with DOS and the running program in it, and block 0 is
-the interrupt vector table, where a byte wrong for a microsecond is a machine
-that stops.
+**`PM1MEM /W` writes one byte per block, and only above C000h, and never
+into the card's own window.** Below C000h is the PC's own RAM with DOS and
+the running program in it, and block 0 is the interrupt vector table. The
+card's window is excluded for the same kind of reason: its second half is
+the shared memory, and the first byte of that is the marker its BIOS checks
+to decide the memory is valid. Putting it back a microsecond later is not
+good enough on the card the machine boots from. Those blocks read `-` and
+`B` in the output rather than a result.
+
+What it reports on this machine, above C000h: `R` at `C000h` and `D000h`
+(option ROM signatures -- the VGA BIOS and the PicoMEM's own), `o` at
+`C400h` and `F000h`-`F800h` (reads, will not take a write), `B` at `D400h`,
+and `.` everywhere else including `FC00h`, which reads as FFh on this
+Gateway.
 
 ## Files
 

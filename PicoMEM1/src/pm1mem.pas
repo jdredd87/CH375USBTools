@@ -16,10 +16,11 @@ program pm1mem;
          BIOS), and stop.  The careful first run on a new firmware
     /W   also test each block from the PC side by writing one byte and
          putting it straight back, to tell RAM from ROM from nothing.
-         Only C000h and above, because below that is the PC's own RAM
-         with DOS and this program in it -- and block 0 is the
-         interrupt vector table, where a byte wrong for a microsecond
-         is a machine that stops
+         Only C000h and above, and never the card's own window:
+         below C000h is the PC's own RAM with DOS and this program in
+         it, block 0 is the interrupt vector table, and the card's
+         shared memory starts with the marker its BIOS checks. In all
+         three a byte wrong for a microsecond is a machine that stops
     /P=  I/O base to try if the card BIOS does not answer (default 2A0)
 
   Exit code: 0 read, 1 no card, 2 the command failed, 3 no shared
@@ -91,6 +92,12 @@ begin
   { never write below C000h: that is the PC's own RAM, this program is
     in it, and block 0 holds the interrupt vectors }
   if B < 48 then begin PcSees := '-'; Exit; end;
+  { and never into the card's own 32 KB window.  Its second half is the
+    shared memory, whose first byte is the validity marker its BIOS
+    checks -- putting it back a microsecond later is not good enough on
+    the card this machine boots from }
+  if (PmRomSeg <> 0) and (Sg >= PmRomSeg) and (Sg < PmRomSeg + $800) then
+    begin PcSees := 'B'; Exit; end;
 
   Old := Mem[Sg : 0];
   Mem[Sg : 0] := Old xor $FF;
@@ -179,7 +186,8 @@ begin
     WriteLn('  the PC sees: R option ROM  w writable  o reads, will not take',
             ' a write');
   if DoWrite then
-    WriteLn('               . reads as FFh   - below C000h, not written to');
+    WriteLn('               . reads as FFh   - not written to   B the card',
+            ' itself');
 
   WriteLn;
   Diff := 0;
