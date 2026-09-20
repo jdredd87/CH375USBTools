@@ -29,6 +29,7 @@ nothing here is a port of anything.
 | `PM1STAT` | the three text answers — disks with their geometry, the USB device list, and `/W` the WiFi state. `/S=n` watches the USB list for n seconds |
 | `PM1OPL` | plays a scale through the AdLib the card emulates, after proving an OPL2 is there by its timers |
 | `PM1BENCH` | what the card costs: port reads, its RAM and ROM against the PC's own, and a whole command round trip |
+| `PM1MOUSE` | turns on the card's mouse reporting, watches the deltas and buttons arrive in its shared memory while you move a USB mouse, and turns it off again. **Beeps** when it wants your hand on the mouse |
 | `PM1DUMP` | the 16 KB ROM and 8 KB shared memory to a file. **Blanks the WiFi key by default** |
 
 `build.cmd` builds them all; `build.cmd info`, `cfg`, `mem`, `dev`, `stat`,
@@ -157,6 +158,44 @@ the same four, and the card's own disk list is unchanged.
 `BV_USBDevice`, the byte `PM1INFO` prints as "USB devices", stays `00`: it
 tracks only mouse, keyboard and joystick, so a drive never appears in it.
 
+### A USB mouse, all the way to the PC side
+
+A mouse on the same port reports as `1: USB mouse`, and it does more than
+report. The card's HID driver keeps an X delta, a Y delta and a button mask,
+and once reporting is enabled it copies them into the **IRQ variable
+structure** in its shared memory on every movement and raises its
+multiplexed interrupt. Those bytes are readable from DOS with no driver at
+all, which is what `PM1MOUSE` does:
+
+```
+answers at +374, so the IRQ variables are at +342
+before : 00 00 00 00 00 00 04 00 00 00 00 00 00 00
+enable mouse reporting (52h): ok
+    2s  dx   -9  dy   -7  buttons 00
+    2s  dx   -6  dy   -4  buttons 00
+changes seen   : 163
+deltas         : x -109 to 81, y -73 to 67
+buttons seen   : 07
+```
+
+All three buttons, and deltas up to 109 counts in a single report. **The card
+does deliver a working mouse to the PC side.** What it does not deliver is a
+mouse to *DOS* — that needs an interrupt handler presenting `INT 33h`, which
+is a driver rather than a probe. The card's own distribution has one; this
+collection does not, yet, and `NEXT.md` says what it would take.
+
+The control run matters as much as the result: with `/E-`, which sends
+nothing at all, the same bytes sit at zero through the whole window. The
+data only moves because the command was sent.
+
+**`BV_USBDevice` stays `00` throughout** — the byte `PM1INFO` prints under
+"USB devices", which has bits defined for mouse, keyboard and joystick. The
+firmware's own header says *"! Not used for the moment"*, and a claimed,
+actively-reporting mouse leaving it at zero is that comment demonstrated.
+An earlier draft of this project proposed checking that byte to see whether
+a mouse had been claimed; it would never have worked, and the source said so
+before the test did.
+
 ### Which devices answer
 
 ```
@@ -262,6 +301,14 @@ whose numbering you have not checked is not a first move.
 retry the connection if it thinks the signal has gone, and on a machine
 administered over that WiFi a retry is a dropped link. Off by default. It
 was run here, once, deliberately, with a smart plug within reach.
+
+**Two commands here are not queries**, and they are the only two: `52h` and
+`53h`, mouse reporting on and off. Each handler is three lines -- set a
+boolean, clear the result, return ready -- so neither writes a file, mounts
+anything, moves memory or saves configuration, and neither can reach the SD
+card. `PM1MOUSE` sends the disable on every exit path, so the card is left as
+it was found. Everything else in both PicoMEM projects is a pure query, and
+a third non-query needs its handler read the same way first.
 
 **The WiFi key is in the shared memory.** The same query copies a structure
 in that holds the network's name *and its key*, 63 bytes at +39, and it

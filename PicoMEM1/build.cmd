@@ -12,6 +12,7 @@ REM    build.cmd stat       ...then PM1STAT, the USB and disk answers
 REM    build.cmd opl        ...then PM1OPL, a scale through the card AdLib
 REM    build.cmd bench      ...then PM1BENCH, command and memory timing
 REM    build.cmd dump       ...then PM1DUMP, and fetch PM1DUMP.BIN here
+REM    build.cmd mouse      ...then PM1MOUSE, watching a USB mouse for 15 s
 REM
 REM  NEEDS
 REM    fpc    Free Pascal cross-compiling to MS-DOS real mode (-Tmsdos -Pi8086)
@@ -30,7 +31,7 @@ if "%DOSBRIDGE%"=="" set DOSBRIDGE=C:\dosbridge
 set TOOLS=%~dp0..\CH375USBTOOLS\src
 if not exist bin mkdir bin
 
-for %%T in (pm1info pm1cfg pm1mem pm1dev pm1stat pm1opl pm1bench pm1dump) do (
+for %%T in (pm1info pm1cfg pm1mem pm1dev pm1stat pm1opl pm1bench pm1dump pm1mouse) do (
   echo --- %%T
   fpc -Tmsdos -Pi8086 -WmLarge -Fu"%TOOLS%" -FEbin -FUbin src\%%T.pas >nul
   if errorlevel 1 goto failed
@@ -71,6 +72,10 @@ exit /b %ERRORLEVEL%
 
 :runbench
 python "%DOSBRIDGE%\dosctl.py" run --timeout 120 bin\PM1BENCH.EXE
+exit /b %ERRORLEVEL%
+
+:runmouse
+python "%DOSBRIDGE%\dosctl.py" run --timeout 120 bin\PM1MOUSE.EXE /S=15
 exit /b %ERRORLEVEL%
 
 :rundump

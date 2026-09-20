@@ -146,8 +146,13 @@ begin
           '   config file : ', InitName(SharedB(7)));
   WriteLn('  WiFi        : ', InitName(SharedB(8)),
           '   base port : ', InitName(SharedB(9)));
+  { The firmware's own header says of this byte: "Bit 0: Mouse Bit 1:
+    Keyboard Bit 3: Joystick ! Not used for the moment" -- and it means
+    it.  A USB mouse the card has claimed and is actively reporting
+    still leaves this 00, as PM1MOUSE demonstrates.  Printed because it
+    is part of the block, labelled so nobody reads anything into it. }
   WriteLn('  USB devices : ', Hex2(SharedB(10)),
-          '  (bit 0 mouse, 1 keyboard, 3 joystick)');
+          '  (mouse/keyboard/joystick bits -- unused by this firmware)');
   WriteLn('  IRQ         : ', SharedB(11), '   bytes 12-16: ',
           Hex2(SharedB(12)), ' ', Hex2(SharedB(13)), ' ', Hex2(SharedB(14)),
           ' ', Hex2(SharedB(15)), ' ', Hex2(SharedB(16)));

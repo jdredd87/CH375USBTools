@@ -42,16 +42,31 @@ this board is the micro-USB connector it is flashed through. DOS gets no new
 drive from it: the card mounts the volume inside itself as a source of disk
 images. See the README.
 
+**A USB mouse works, as far as the PC side.** Enabled with command 52h, the
+card copies an X delta, a Y delta and a button mask into its IRQ variables
+on every movement: 163 changes in 25 seconds, deltas to 109 counts, all
+three buttons. `PM1MOUSE` is the tool and the README has the output. The
+control run with `/E-` shows the same bytes never move when nothing is sent.
+`BV_USBDevice` stays 00 throughout, exactly as the firmware's own "not used
+for the moment" comment says it would.
+
 ## Ideas not done
 
-* **A USB mouse or keyboard on that port.** The thumb drive proved the host
-  and the naming; HID is the interesting one that is left, because the
-  firmware has mouse and keyboard emulation of its own and `BV_USBDevice`
-  has bits for them. Two questions in one plug: does the byte `PM1INFO`
-  prints as "USB devices" light bit 0 or 1, and can **DOS itself** then see
-  a pointer — `C:\TOOLS\MOUSE.EXE` from the DOSBridge kit answers the
-  second in one run. That would be the card doing something useful rather
-  than only reporting.
+* **An INT 33h driver, so DOS gets a pointer.** This is the obvious next
+  piece of real work and it is squarely what this collection does --
+  `CH375Mouse` is the same job for the CH375, and a good deal harder, since
+  it has to run the whole USB stack itself. Here the hard part is already
+  done by the card: enable reporting, hook the card's IRQ (it is 7 on this
+  machine, and `BV_IRQ` says which), accumulate the deltas and serve
+  `INT 33h` functions 0, 3, 4, 7, 8 and 11. The card's own distribution has
+  such a driver (`PMMOUSE`), so it is known to be possible; this would be
+  ours, and it would work on a PicoMEM 2 unchanged. Read `CH375Mouse`'s
+  resident structure first -- it already solves the INT 33h half.
+* **A USB keyboard.** Command 54h switches keyboard reporting on and off the
+  same way, and the same IRQ structure almost certainly carries the
+  keystrokes -- but `pm_irq_svar_t` has no keyboard fields in it, so where
+  they land has not been worked out. Read the firmware before sending 54h;
+  it has not been added to the whitelist.
 * **A hub.** `CFG_TUH_HUB` is 1 and nothing has ever tested one. Two devices
   at once would also exercise the multi-line answer, which has only ever
   been seen with a single entry.

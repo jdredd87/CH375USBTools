@@ -59,6 +59,18 @@ const
   CMD_USB_STATUS = $61;   { USB device list, as text }
   CMD_DISK_STAT  = $62;   { mounted images, as text -- reads config only }
 
+  { The only two that are NOT queries.  Their handlers are three lines
+    each -- set a boolean, clear the result, return ready -- and that is
+    the whole reason they are here: they write no file, mount nothing,
+    move no memory and save no configuration, so neither can reach the
+    SD card this machine boots from.  Enabling makes the card copy an X
+    delta, a Y delta and a button mask into its IRQ variables on every
+    mouse movement, and raise its multiplexed interrupt; disabling stops
+    it.  PM1MOUSE sends the disable on every exit path.  Do not add a
+    third without reading its handler the same way. }
+  CMD_MOUSE_ON   = $52;
+  CMD_MOUSE_OFF  = $53;
+
   SHARED_OFS = $4000;     { shared memory = ROM segment + 16 KB }
   SHARED_LEN = 8192;
   CFG_OFS    = 82;        { the configuration block }
@@ -204,7 +216,8 @@ function Allowed(Cmd: Byte): Boolean;
 begin
   case Cmd of
     CMD_RESET, CMD_MEMTYPE, CMD_WIFI_INFO,
-    CMD_USB_STATUS, CMD_DISK_STAT: Allowed := True;
+    CMD_USB_STATUS, CMD_DISK_STAT,
+    CMD_MOUSE_ON, CMD_MOUSE_OFF: Allowed := True;
   else
     Allowed := False;
   end;
@@ -255,6 +268,8 @@ begin
     CMD_WIFI_INFO:  CmdName := 'WiFi info';
     CMD_USB_STATUS: CmdName := 'USB status';
     CMD_DISK_STAT:  CmdName := 'disk status';
+    CMD_MOUSE_ON:   CmdName := 'mouse reporting on';
+    CMD_MOUSE_OFF:  CmdName := 'mouse reporting off';
   else
     CmdName := '?';
   end;
