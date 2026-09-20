@@ -30,6 +30,11 @@ also run one on the DOS machine over DOSBridge.
 
 ## What it found on this machine
 
+The card read here is a **PicoMEM 2 in the 8086-class box** (NEC V30, MS-DOS
+6.22). The other machine in use, a Gateway 2000 386SX/25, has a PicoMEM **1**
+in it -- these tools work on either, but the board id and firmware below are
+the 2's.
+
 ```
 BIOS     : answered INT 13h AH=60h -- base 02A0h, ROM at D000h, device mask 070Eh
 test port: 100 of 100 reads in sequence -- a PicoMEM is at 02A0h

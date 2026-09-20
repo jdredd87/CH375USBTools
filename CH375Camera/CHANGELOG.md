@@ -8,7 +8,7 @@ is: bump it, add an entry here, `build.cmd`, commit, `git tag -a`.
 ## 0.2 -- 2026-09-20
 
 Everything here still works on the V30 it was written on; what changed is
-that it now also works on a **386**, where it did not.
+that it now also works on a **Gateway 2000 386SX/25**, where it did not.
 
 * **Blanking is measured in time, not packets.**  `BLANK_RUN = 8` counted
   empty packets, and its own comment gave the assumption away: "a packet
@@ -28,7 +28,8 @@ that it now also works on a **386**, where it did not.
   prints nothing on the way down because its output is still buffered, so
   the only evidence that survives is a file that was closed.
 
-Measured on the 386 (PicoMEM 1, no coprocessor), camera on a CH375 at 260h:
+Measured on a Gateway 2000 386SX/25 (PicoMEM 1, no 387), camera on a CH375
+at 260h:
 176x144 in 715 ms, 320x240 in 1815 ms, 352x288 in 2200 ms; `CAMLIVE` 12
 pictures in mode X with **0 strips missed**; every display mode -- VESA,
 mode X, 13h, 12h, 80x50, 80x25, ASCII -- and the button, 5 presses for 5.

@@ -62,6 +62,34 @@ SUPPORTED.
 | ASIX AX88179 | `0B95:1790` | The reference part. Verified on **two physically different adapters** from different manufacturers — MACs `40:AE:30:6D:00:34` and `00:50:B6:B6:1C:64`. Both boot, link, and move data. **They do NOT move 5 MB byte-exact reliably**, which this row used to claim: about one 5 MB download in nine comes back the right length with a corrupt region, and every error counter reads zero while it happens. See the README. The claim was true of the runs it was written from and was never a property of the adapter. |
 | **DM9601/SR9700-compatible clone** | `0FE6:9702`, `iProduct` "USB 2.0 10/100M Ethernet Adaptor", no manufacturer string, housing marked **"Gzcyc No:9700"** | **Works.** `USBPKT` brings it up from a cold enumeration and goes resident, and mTCP runs over it: pings to the gateway and to 8.8.8.8 3/3, DNS resolving, and an HTTP GET byte-exact. Discovered geometry: configuration 1, **network interface 1** (interface 0 is the driver-CD flash and is skipped), bulk endpoints 1 IN / 2 OUT, MAC `00:E8:00:4C:26:D5` read from PAR one register at a time. **It only implements SINGLE-BYTE register reads** -- see below. **175 MB verified byte-exact** across 35 independent 5 MB downloads (see below). **A second unit** with the same ID and strings, MAC `00:E8:00:32:39:58`, worked first time on 2026-09-19 with no code change: `USBPKT /I=65` beside the PicoMEM driver on 60h, ARP to the gateway answered, `PING` 4/4 to the gateway and to 8.8.8.8, a 1 MB `HTGET` byte-exact, and `USBPKT /U` left 60h untouched. Its NSR also read `81` (DOWN) after `USBPKT`'s bring-up and `C1` after `/T`'s -- the same reporting quirk as the first unit, so it is not one adapter's fault. |
 
+## On a Gateway 2000 386SX/25, 2026-09-20
+
+Everything in this file was measured on the 8086-class box. All three
+adapters have since been run on a **Gateway 2000 386SX/25** (PicoMEM 1, no
+387), CH375 at 260h, with the bridge's own driver left alone on 60h
+throughout:
+
+| adapter | driver | 5 MB | time |
+|---|---|---|---|
+| SR9700 `00:E8:00:4C:26:D5` | vendor | **byte-exact** | 284.7 s |
+| SR9700 `00:E8:00:32:39:58` | vendor | **byte-exact** | 304.8 s |
+| AX88179A `A0:CE:C8:BC:0A:91` | **CDC-ECM class** | **byte-exact** | 227.9 s |
+
+Two things are worth taking from that. **The CPU is not the limit**: a
+machine four to five times faster moves the same bytes per second, because
+the ceiling is the USB packet rate. And the **class path's counters stayed
+at zero** -- 4,323 bursts, 4,155 frames, no impossible lengths, no
+realignments, nothing -- against 235 impossible lengths and 104 recovered by
+search on the vendor path in the same conditions. That is structural rather
+than luck: CDC-ECM carries raw frames, so the burst parser those counters
+police does not exist on that path.
+
+**One measurement to distrust.** A 5 MB download on the SR9700 once took
+2092.9 s instead of ~285 s, with every driver counter clean. The machine's
+WiFi was failing at the time and a reset cured it; the USB path does not use
+the WiFi at all, so a sick machine can present as a slow USB link. The
+counters are what tell the two apart.
+
 ## Before you plug a new one in
 
 Run **`NETID`** first. The box an adapter came in is not evidence of what is

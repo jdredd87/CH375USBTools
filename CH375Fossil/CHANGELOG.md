@@ -7,7 +7,7 @@ release is: bump it, add an entry here, `build.cmd`, commit, `git tag -a`.
 
 ## Unreleased
 
-**Verified on a 386, and one latent bug fixed on the way.**
+**Verified on a Gateway 2000 386SX/25, and one latent bug fixed on the way.**
 
 `fosapi`, `fosbbs` and `fostest` cleared their register records with
 `FillChar` before every `Intr($14, ...)`, which also cleared the FLAGS --
@@ -27,7 +27,7 @@ everything it sends comes straight back as input -- so `Session` never
 ends. It is written for the TCP transport and wants a caller. Run it with
 `/PKT`, or against a modem, and not on loopback.
 
-Measured on the 386 (PicoMEM 1, no coprocessor), 2026-09-20:
+Measured on the Gateway 2000 386SX/25 (PicoMEM 1, no 387), 2026-09-20:
 
 | | |
 |---|---|

@@ -146,8 +146,13 @@ bench, not before -- the interface should come from two real cameras.
 * `REP INSB` in `camgrab.Pkt` on a 186+ (the V30 has it; `USBPKT` does it).
   Makes each packet read faster, but capture waits on the camera, so no
   picture comes sooner -- only worth it for consistency.
-* A 386 path in `camfast` using 32-bit registers -- a real drawing speed-up
-  on a 386, untestable here.
+* A 386 path in `camfast` using 32-bit registers. No longer untestable: a
+  **Gateway 2000 386SX/25** has run this whole project since 2026-09-20.
+  Temper the expectation, though -- the SX has a 16-bit external bus, so
+  32-bit registers help the arithmetic and not the memory moves, and on this
+  machine capture WAITS on the camera rather than on drawing. Measure
+  `CAMLIVE`'s "ms to take and draw" before and after; the draw is the only
+  part that could move.
 * Per-strip brightness matching (overlap strips a few pixels and scale)
   if exposure seams ever matter.
 * A per-picture text-mode palette was tried and removed (README: small

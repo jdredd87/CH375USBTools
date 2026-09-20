@@ -53,6 +53,13 @@ ones. It is a 1987 machine, nine years older than USB, and almost every
 limitation in this guide is a fact about it rather than a shortcoming of the
 code.
 
+**A second machine has since been used**, a **Gateway 2000 386SX/25** with a
+PicoMEM 1 card, and every project here has been run on it: the drivers, the
+camera, the DisplayLink adapter, the modem and the FOSSIL. It is four to five
+times the Model 30 and it found two faults the 8086 never could -- see
+[On a 286/386/486](#on-a-286386486-the-runtime-hooks-int-10h). Everything
+below still describes the 8086, because that is what the code targets.
+
 ```
 Machine    IBM PS/2 Model 30 (8086)
 CPU        8086, 8-bit ISA bus           <- this matters more than anything else
@@ -652,8 +659,21 @@ offsets. Always `/U` before deploying a new build.
 
 ## What a 386 would unlock
 
-Everything below is **not implemented and not tested**. It is written down
-so the next session starts from a plan rather than from memory.
+Everything below is **not implemented**. Some of it is now TESTED, because a
+**Gateway 2000 386SX/25** has since run every project in this collection --
+so the guesses that turned out to be wrong are marked as such rather than
+left standing.
+
+**What the 386 actually changed, measured 2026-09-19/20:** nothing about the
+CH375 itself. Both SR9700 adapters and an AX88179A moved 5 MB byte-exact, the
+mouse, keyboard, camera, DisplayLink, audio and modem projects all behave as
+they do on the 8086, and the USB packet rate -- 100 frames/s, the number that
+caps this whole collection -- is unchanged, because it is the chip's limit and
+not the CPU's. What the faster machine DID do is expose two latent faults: the
+runtime's INT 10h hook (above) and a camera heuristic that counted packets
+instead of measuring time.
+
+The rest of this section is still a plan rather than memory:
 
 **Windows 95 support.** The obvious big one, and the reason the machine
 matters — Windows 95 needs a 386. It would want a `.386` VxD to arbitrate

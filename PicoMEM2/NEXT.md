@@ -22,10 +22,14 @@ whoever continues it, including a fresh Claude Code instance.
 the shared memory decoded, the USB/disk/WiFi status queries, repeated
 queries (10 in 10 s, and a 10 s `PMUSB` watch), the ROM dump.
 
-**The machine:** PicoMEM 2 board id 11, BIOS of 2026-06-16, base 2A0h, ROM
-at D000h, IRQ 7. DOS boots from `cdrive` on the card's SD card -- **the
-card is the boot disk** -- and DOSBridge runs over the card's WiFi NE2000
-at 300h. Both facts constrain everything below.
+**The machine:** the 8086-class box (NEC V30, MS-DOS 6.22), holding a
+PicoMEM 2 -- board id 11, BIOS of 2026-06-16, base 2A0h, ROM at D000h,
+IRQ 7. The other machine in use, a Gateway 2000 386SX/25, has a PicoMEM 1
+in it; these tools read either, but everything below was measured on the 2.
+
+DOS boots from `cdrive` on the card's SD card -- **the card is the boot
+disk** -- and DOSBridge runs over the card's WiFi NE2000 at 300h. Both
+facts constrain everything below.
 
 **What the USB ports gave:** USB-A with a USB Ethernet adapter in it:
 "1 device", description empty (nothing in the firmware claimed it). USB-C

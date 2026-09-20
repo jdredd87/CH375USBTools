@@ -380,7 +380,8 @@ full INT 33h implementation in one image.
 |---|---|
 | **PS2toUSB Adapter** `0E8F:0020`, low speed, two HID boot interfaces (keyboard 03/01/01, mouse 03/01/02) | **keyboard half proven**, mouse half **not yet** -- see below |
 
-Measured on the 386 + PicoMEM 1 box, 2026-09-20, CH375 at 260h:
+Measured on a Gateway 2000 386SX/25 (PicoMEM 1, no 387), 2026-09-20,
+CH375 at 260h:
 
 * `USBCOMBO /T` self-test: both delivery paths intact.
 * `COMBOTST`: 40 of 40 checks.
