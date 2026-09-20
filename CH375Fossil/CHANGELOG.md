@@ -19,7 +19,7 @@ itself, so nothing here ever showed it, but FSC-0015 says nothing about the
 interrupt flag and a driver that simply IRETs would freeze the clock of
 every program here. 43 sites now go through `ClearRegs`, which clears
 everything except the flags. The same bug, in the same shape, wedged a 386
-three times in PicoMEM2's `AskBios` before it was understood.
+three times in the PicoMEM tools' `AskBios` before it was understood.
 
 `FOSBBS` on the LOOPBACK transport never returns, and that is not a fault:
 on loopback the BBS is its own caller -- carrier is always asserted and

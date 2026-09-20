@@ -62,8 +62,8 @@ below still describes the 8086, because that is what the code targets.
 
 Both machines boot from a **PicoMEM** ISA card and reach the network through
 it, and the cards are swapped between them -- so which card is in which box
-is a fact with a date on it. [PicoMEM1](PicoMEM1/) and
-[PicoMEM2](PicoMEM2/) read them; neither is about the CH375, and both are in
+is a fact with a date on it. [PicoMEM](PicoMEM/) reads them -- one toolset
+for both cards, run on both -- and it is not about the CH375 at all; it is in
 this collection because the bridge that builds and tests everything here runs
 over those cards' WiFi. `PM1INFO` identifies the card from the BIOS date in
 its ROM, which is the only reliable way to tell one from the other.
@@ -293,7 +293,7 @@ printing nothing, because the output is still in a buffer.
 `CH375USBTOOLS/src/vidfix.pas` puts the vector back. It is pulled in by
 `chtool`, which nearly every program here uses, and named directly by the few
 that do not (`fasttest`, `ecmlink`, `usbget`, `usbvfy`, `rampchk`, the
-PicoMEM2 tools). It acts only when there is no coprocessor, the vector points
+PicoMEM tools). It acts only when there is no coprocessor, the vector points
 inside the running program, the bytes are that stub, and the address it
 recovers is in ROM -- so it is inert everywhere else, and one binary is
 correct on every machine.

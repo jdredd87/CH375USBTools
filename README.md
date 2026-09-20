@@ -1,6 +1,6 @@
 # CH375USBTools — DOS tools for a WCH CH375 in USB host mode
 
-Ten projects on one ISA card, two more on a card that is not it at all, and
+Ten projects on one ISA card, one more on a card that is not it at all, and
 no storage anywhere in sight.
 
 The WCH **CH375** is usually sold as a way to read a USB stick from an old
@@ -35,8 +35,7 @@ which is rather the point.
 | **[CH375Serial](CH375Serial/)** | **It talks to a modem.** DOS drives a USB-to-serial adapter and holds an AT-command conversation with a USRobotics Courier V.Everything at up to **38400 baud**. The ceiling is the USB packet rate, not the UART — the same number that set the video project's frame rate and killed the audio one |
 | **[CH375Fossil](CH375Fossil/)** | **A modem that is not there.** `FOSSIL.COM` -- an FSC-0015 FOSSIL driver, all thirty `INT 14h` functions, so unmodified DOS software believes there is a modem on COM1. Underneath is either a USB-to-serial adapter on the CH375, or a TCP listener on any packet driver. A BBS written in 1991 cannot tell |
 | **[CH375Camera](CH375Camera/)** | **A 1998 webcam taking photographs.** An IBM PC Camera streams video isochronously at 225 KB/s into a chip with no isochronous mode; it works anyway, because an isochronous *IN* is just a packet the chip receives, and the camera's own window registers let a picture be taken as full-height 64-pixel strips, one frame each. Stills at 176x144, 320x240 and 352x288 in 1.5-2.2 s, saved as BMP, or shown live-ish in VESA, mode X, 13h, 12h, half-block text or ASCII |
-| **[PicoMEM2](PicoMEM2/)** | **Not a CH375 at all: the PicoMEM 2 card, read from DOS.** Finds the card through its BIOS, proves it on its counting test port, decodes its shared memory (board, memory map, disk images) and asks what is on its USB-A port -- through three read-only queries, enforced, because on this machine the card is the boot disk. The stock firmware cannot pass a USB device through to DOS; `NEXT.md` is the plan for firmware that can |
-| **[PicoMEM1](PicoMEM1/)** | **The older PicoMEM, read the same way.** Eight tools: what the card is, its whole configuration, its **live** memory map asked block by block, which of its emulated devices actually answer -- there is a working AdLib in the machine and no sound card in it -- its text answers, a scale played through that AdLib, what it costs to talk to, and a dump that blanks the WiFi key. It also found why PicoMEM2's tools reported nothing here: the card writes its answers at a different offset on an older BIOS, and assuming it fails silently |
+| **[PicoMEM](PicoMEM/)** | **Not a CH375 at all: the PicoMEM card each machine boots from, read from DOS.** Twelve tools -- what the card is, its whole configuration, its **live** memory map asked block by block, which of its emulated devices actually answer (there is a working AdLib in the machine and no sound card in it), its text answers, a scale through that AdLib, a USB mouse arriving byte by byte, a watcher over all 8 KB of its shared memory, what it costs to talk to, and a dump that blanks the WiFi key. Everything runs on a PicoMEM 1 and a PicoMEM 2 unchanged, and has been run on both. The stock firmware cannot pass a USB device through to DOS; `NEXT.md` is the plan for firmware that can |
 
 Each project has its own `README.md`, `CHANGELOG.md`, `build.cmd` and
 `bin\`. The binaries are committed deliberately: the machine this targets

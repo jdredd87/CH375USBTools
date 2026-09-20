@@ -1,0 +1,5 @@
+# Dumps of the card, made by PMDUMP.  Never committed: with /K one of
+# these holds the WiFi key out of the card's shared memory, and even
+# without it the file is a copy of one machine's configuration.
+PMDUMP.BIN
+*.BIN
