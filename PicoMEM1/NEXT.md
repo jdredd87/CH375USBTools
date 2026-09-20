@@ -73,8 +73,10 @@ for the moment" comment says it would.
   `KEYB_Enabled` -- the flag command 54h sets -- is read by nothing, and
   `IRQ_R_KEYBOARD` is defined in a header and raised nowhere, where
   `IRQ_R_MOUSE` is raised and works. Demonstrated with 54h sent and
-  accepted: `PM1WATCH` swept all 8192 bytes 246 times through 22 seconds of
-  typing and not one byte moved. Nothing on the DOS side can change that;
+  accepted, using `PM1WATCH /2` -- two identical 25-second windows, one
+  typing and one still, because the card is the boot disk and its own disk
+  traffic moves bytes whatever anyone does. Both windows came back empty,
+  with the watcher validated on the same binary immediately afterwards. Nothing on the DOS side can change that;
   it needs firmware, like everything else in the last section.
 * **A hub.** `CFG_TUH_HUB` is 1 and nothing has ever tested one. Two devices
   at once would also exercise the multi-line answer, which has only ever

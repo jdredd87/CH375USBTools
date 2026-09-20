@@ -214,20 +214,42 @@ nothing at all; the interrupt source reserved for keystrokes is a `#define`
 and no more. The published sources are also **newer** than the BIOS on this
 card, so a feature missing there is certainly missing here.
 
-Demonstrated rather than argued. With `54h` sent and accepted, `PM1WATCH`
-swept all 8192 bytes 246 times over 22 seconds of typing:
+Demonstrated rather than argued, and demonstrated properly: `PM1WATCH /2`
+runs **two identical windows**, one that asks you to hammer keys and one that
+asks you to keep still, and takes the difference. That matters because the
+card is the boot disk -- its saved registers and its disk buffer move on
+every `INT 13h`, so a single window catches whatever disk traffic happened to
+occur and one earlier run was muddied by exactly that.
+
+With `54h` sent and accepted, 25 seconds each way:
 
 ```
-keyboard reporting on (54h): ok
-246 sweeps of 8192 bytes in 22 seconds
-NOT ONE BYTE of the card's shared memory changed.
+changes per region, 25 seconds each:
+     doing it   keeping still   difference   region
+                  (the table is empty)
 ```
+
+Not one byte, in either window. And the person typing "might have hit a few
+keys when I should not have" during the still window -- which changes nothing,
+because keystrokes in *either* window produced *nothing*. A slip that would
+ruin a positive result cannot hurt a negative one; it only adds typing.
 
 **A null result is worth exactly what the instrument is worth**, so the same
 tool has a `/T` that proves it can see a write: it asks for the USB list,
 snapshots, then asks for the disk list mid-watch, and the two answers differ.
 That reports 28 changed offsets from `+374` onwards, the count byte going
-`02` to `04` as two USB lines become four disk lines.
+`02` to `04` as two USB lines become four disk lines. It is run against the
+**same binary** that produced the silence, after it, every time -- a rebuilt
+watcher is an unproven one.
+
+One practical note before any of this works: **the cue is on the PC speaker**,
+and on this machine the speaker turned out to be dead. Five sirens through the
+DOSBridge kit's own `BEEP` tool produced silence, which exonerated the
+software and condemned the hardware; a replacement fixed it. Until then there
+was no way to know whether the person had typed during the window, which is
+the difference between a measurement and a guess. The cues also print on
+stderr, which the bridge does not redirect, so they land on the machine's own
+screen as well.
 
 That self-test earned its place immediately. Its **first** version sent the
 same query twice and reported nothing at all -- re-asking rewrites
