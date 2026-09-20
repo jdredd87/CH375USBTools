@@ -99,6 +99,23 @@ begin
 end;
 
 { Print however many lines the answer in Buf holds. }
+{ True if a line holds nothing a person could read.  ParamLine turns a
+  byte that is not printable into a dot, so a description the firmware
+  wrote as a single control byte arrives here looking like "    1: ."
+  -- which reads as a tool fault rather than a firmware one.  Say which
+  it is.  Seen on the 2026-06-16 firmware for a USB keyboard, where the
+  same firmware writes "Mouse" for a mouse. }
+function HasText(const S: string): Boolean;
+var I: Integer; C: Char;
+begin
+  HasText := True;
+  for I := 1 to Length(S) do begin
+    C := S[I];
+    if ((C >= 'A') and (C <= 'Z')) or ((C >= 'a') and (C <= 'z')) then Exit;
+  end;
+  HasText := False;
+end;
+
 procedure ShowLines(const Lead: string);
 var N, I: Byte; S: string;
 begin
@@ -108,7 +125,12 @@ begin
     Exit;
   end;
   for I := 1 to N do
-    if ParamLine(Buf, PLEN, I, S) then WriteLn(Lead, S);
+    if ParamLine(Buf, PLEN, I, S) then begin
+      WriteLn(Lead, S);
+      if (I > 1) and (not HasText(S)) then
+        WriteLn(Lead, '  ^ no text there: the firmware wrote a byte that is',
+                ' not a name');
+    end;
 end;
 
 function AskAndCopy(Cmd: Byte): Byte;

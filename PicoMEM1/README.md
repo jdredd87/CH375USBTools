@@ -234,6 +234,24 @@ keys when I should not have" during the still window -- which changes nothing,
 because keystrokes in *either* window produced *nothing*. A slip that would
 ruin a positive result cannot hurt a negative one; it only adds typing.
 
+**Repeated on the PicoMEM 2**, with its newer 2026-06-16 firmware, on the
+same machine: both windows empty again, and the watcher validated against the
+same binary immediately afterwards at the new offset (17 changes, count byte
+`02` to `04` at `+886`). Two cards, two firmwares, the same nothing.
+
+That card also **describes a keyboard wrongly**. Where the PicoMEM 1 writes
+`USB keyboard`, the PicoMEM 2 writes a single `02` byte and a NUL where a
+name should be -- visible in the raw parameter area as
+`"    1: " 02 00`, while the same firmware writes `Mouse` perfectly well for
+a mouse. `PM1STAT` now says so rather than printing a bare dot and leaving
+the reader to wonder whether the tool broke:
+
+```
+   USB  : 1 device
+    1: .
+    ^ no text there: the firmware wrote a byte that is not a name
+```
+
 **A null result is worth exactly what the instrument is worth**, so the same
 tool has a `/T` that proves it can see a write: it asks for the USB list,
 snapshots, then asks for the disk list mid-watch, and the two answers differ.
@@ -302,7 +320,9 @@ two cards. Everything in this folder runs on it unchanged.
 | answers area | +886 would be wrong -- it is at **+374** | **+886** |
 | AdLib status bytes | `06` then `C6` | `00` then `C0` |
 | a mouse is described as | `USB mouse` | `Mouse` |
+| a keyboard is described as | `USB keyboard` | a bare `02` byte -- not text |
 | mouse deltas and buttons | yes | yes |
+| keystrokes reaching the PC | none | none |
 | blocks emulated | 2 (`D000h`, `D400h`) | the same 2 |
 | card I/O port read | 129,228/s | 130,101/s |
 | card RAM word read | 145,049/s | 145,114/s |

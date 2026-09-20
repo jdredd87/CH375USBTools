@@ -76,7 +76,11 @@ for the moment" comment says it would.
   accepted, using `PM1WATCH /2` -- two identical 25-second windows, one
   typing and one still, because the card is the boot disk and its own disk
   traffic moves bytes whatever anyone does. Both windows came back empty,
-  with the watcher validated on the same binary immediately afterwards. Nothing on the DOS side can change that;
+  with the watcher validated on the same binary immediately afterwards.
+  **Repeated on the PicoMEM 2 and its 2026-06-16 firmware, same result** --
+  two cards, two firmwares, the same nothing. That card also writes a bare
+  `02` byte where a keyboard's name should go, which is a firmware bug and
+  not a reading error. Nothing on the DOS side can change that;
   it needs firmware, like everything else in the last section.
 * **A hub.** `CFG_TUH_HUB` is 1 and nothing has ever tested one. Two devices
   at once would also exercise the multi-line answer, which has only ever
