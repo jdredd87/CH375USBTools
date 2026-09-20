@@ -58,16 +58,47 @@ for the moment" comment says it would.
 
 ## Ideas not done
 
-* **An INT 33h driver, so DOS gets a pointer.** This is the obvious next
-  piece of real work and it is squarely what this collection does --
-  `CH375Mouse` is the same job for the CH375, and a good deal harder, since
-  it has to run the whole USB stack itself. Here the hard part is already
-  done by the card: enable reporting, hook the card's IRQ (it is 7 on this
-  machine, and `BV_IRQ` says which), accumulate the deltas and serve
-  `INT 33h` functions 0, 3, 4, 7, 8 and 11. The card's own distribution has
-  such a driver (`PMMOUSE`), so it is known to be possible; this would be
-  ours, and it would work on a PicoMEM 2 unchanged. Read `CH375Mouse`'s
-  resident structure first -- it already solves the INT 33h half.
+* **An INT 33h driver, so DOS gets a pointer.** The obvious next piece of
+  real work, and squarely what this collection does: `CH375Mouse` is the
+  same job for the CH375 and a good deal harder, since it has to run the
+  whole USB stack itself. Here the card has already done everything except
+  the last step.
+
+  **Checked on the hardware 2026-09-20, before writing anything:**
+
+  | | |
+  |---|---|
+  | `INT 33h` | `0032:40D2` -- **not a driver.** That points into low memory below DOS; it is an uninitialised vector. Nothing serves the mouse interface |
+  | `INT 0Fh` (IRQ 7) | `D000:2C1E` -- **the card's own BIOS ROM.** The card installs and services its multiplexed interrupt already |
+
+  So the card's BIOS owns the IRQ and does *not* provide INT 33h, which
+  settles the design: **chain, do not replace.** Hook INT 0Fh, read
+  `mouse_x`, `mouse_y` and `mouse_b` out of the IRQ variables FIRST,
+  accumulate, then jump to the BIOS handler at the saved vector so its own
+  acknowledge still happens. Then serve INT 33h functions 0, 3, 4, 7, 8
+  and 11.
+
+  Polling instead of chaining does not work well enough: the firmware
+  overwrites those three bytes on every event and does not accumulate, so
+  anything slower than the report rate silently loses movement. `PM1MOUSE`
+  polls and says so -- its totals are a floor, not a total -- which is fine
+  for "does data arrive" and useless for a pointer.
+
+  **Start non-resident.** A prototype that hooks IRQ 7, chains, accumulates
+  for twenty seconds and prints the totals proves the chain works and
+  nothing wedges, before a byte goes resident. Same discipline as PM1MEM
+  asking one block whose answer is known before asking sixty-four.
+
+  The card's own distribution has such a driver (`PMMOUSE`), so it is known
+  to be possible; this would be ours, and it would work on either card
+  unchanged. Read `CH375Mouse`'s resident structure first -- it already
+  solves the INT 33h half.
+
+  One hazard already visible: that garbage `INT 33h` vector is **non-zero**,
+  and the usual way a program tests for a mouse driver is exactly that. Any
+  driver we write should install a proper handler rather than assume the
+  vector is free, and anything that probes for a mouse should check the
+  handler really answers function 0 rather than trusting the vector.
 * ~~A USB keyboard.~~ **Answered: this firmware has no keyboard path at
   all.** The card claims the device and reports `1: USB keyboard`, but
   `KEYB_Enabled` -- the flag command 54h sets -- is read by nothing, and
