@@ -60,6 +60,11 @@ times the Model 30 and it found two faults the 8086 never could -- see
 [On a 286/386/486](#on-a-286386486-the-runtime-hooks-int-10h). Everything
 below still describes the 8086, because that is what the code targets.
 
+That machine's PicoMEM 1 is itself read by [PicoMEM1](PicoMEM1/), the way
+the 8086 machine's PicoMEM 2 is by [PicoMEM2](PicoMEM2/) -- neither is about
+the CH375, and both are in this collection because the bridge that builds
+and tests everything here runs over those cards' WiFi.
+
 ```
 Machine    IBM PS/2 Model 30 (8086)
 CPU        8086, 8-bit ISA bus           <- this matters more than anything else

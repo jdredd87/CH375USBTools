@@ -11,7 +11,9 @@ written here in Pascal; the card's published firmware and BIOS sources were
 read to learn the protocol, and nothing is copied from them.
 
 One of the projects in [CH375USBTools](../README.md), and the first that is
-not about the CH375: the question it starts from is whether the PicoMEM's
+not about the CH375; [PicoMEM1](../PicoMEM1/) is the other, for the older
+card, and it is where the memory map, the emulated devices and the timings
+are gone into properly. The two share a protocol and not a unit. the question it starts from is whether the PicoMEM's
 USB host could do what the CH375 does -- let DOS drive a USB device itself.
 **Through the stock firmware, it cannot**, and why is below.
 
@@ -84,8 +86,18 @@ from its firmware (`dev_picomem_io.cpp`) and BIOS (`pm_hw.asm`):
 * **Shared memory.** 8 KB of RAM the card emulates at ROM segment + 16 KB
   (`D000:4000` here): 32 bytes of BIOS variables (init states, board and
   firmware IDs), the card's configuration at +82 (disk image names and
-  geometry, memory map, NE2000 port), and a 2 KB parameter area at +886
-  that text answers are written into.
+  geometry, memory map, NE2000 port), and a 2 KB parameter area that text
+  answers are written into.
+* **Where that parameter area starts depends on the firmware, and this
+  project assumed it.** +886 is right for the PicoMEM 2's BIOS of
+  2026-06-16. The PicoMEM 1's of 2025-11-02 puts it at +374, because the
+  configuration block between them grew from 256 bytes to 768: `886 = 82 +
+  768 + 36`, `374 = 82 + 256 + 36`. Run against that card, `PMPROBE` read a
+  count byte the firmware had never written and reported `USB: 0 line(s)`
+  after a command that had plainly succeeded -- a true sentence and a wrong
+  conclusion. `FindParam` in `pmcard.pas` now looks for it instead, and
+  `PMPROBE` and `PMUSB` call it; [PicoMEM1's README](../PicoMEM1/README.md)
+  explains how it is found.
 * **A command** is: wait for status 00, write the argument, write the
   command, wait for 00, read the result.
 

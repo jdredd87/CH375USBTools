@@ -118,6 +118,18 @@ from this Unlicense collection.
 4. Then C1h-C4h, and a port of `CH375USBTOOLS`' `USBINFO` onto them. Then
    the SR9700 driver, the camera.
 
+## Since this was written
+
+**2026-09-20.** The parameter area is no longer assumed to be at +886.
+A PicoMEM 1 with the BIOS of 2025-11-02 puts it at +374, and against that
+card `PMPROBE` and `PMUSB` reported nothing at all while reporting success.
+`pmcard.pas` gained `FindParam`, which locates it from the shape of the
+disk-status answer, and both tools call it. The sibling project
+[PicoMEM1](../PicoMEM1/) is where that was worked out, and it carries eight
+more tools for the older card -- the live memory map through command 05h,
+the emulated devices probed from the PC side, and timings for the card's
+memory and its command round trip.
+
 ## Ideas not done
 
 * A `PMUSB` mode that beeps on a change, for plug tests with nobody

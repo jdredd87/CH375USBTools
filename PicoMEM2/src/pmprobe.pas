@@ -151,7 +151,7 @@ end;
 procedure TakeParams;
 var I: Word;
 begin
-  for I := 0 to High(Buf) do Buf[I] := SharedB(PARAM_OFS + I);
+  for I := 0 to High(Buf) do Buf[I] := SharedB(PmParam + I);
 end;
 
 { The status commands answer with: a line count byte, then that many
@@ -207,7 +207,7 @@ begin
   end;
   if DoHex then begin
     WriteLn('  parameter area after it:');
-    Dump(PARAM_OFS, 128, True);
+    Dump(PmParam, 128, True);
   end;
 end;
 
@@ -329,6 +329,16 @@ begin
   end;
 
   if SharedOK then begin
+    if DoUsb or DoDisk or DoWifi then begin
+      { where the text answers land moved between firmwares -- find it
+        rather than assume, or a PicoMEM 1 reports nothing at all }
+      if FindParam then begin
+        if PmParam <> PARAM_OFS then
+          WriteLn('answers at +', PmParam, ' on this firmware, not +',
+                  PARAM_OFS)
+      end else
+        WriteLn('could not find the answers area; assuming +', PmParam);
+    end;
     if DoUsb then Ask(CMD_USB_STATUS, 'USB');
     if DoDisk then Ask(CMD_DISK_STAT, 'disks');
     if DoWifi then Ask(CMD_WIFI_INFO, 'WiFi');

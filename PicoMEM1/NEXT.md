@@ -1,0 +1,90 @@
+# Picking this up next
+
+Written 2026-09-20, at the end of the first session on the PicoMEM 1. For
+whoever continues it, including a fresh Claude Code instance.
+
+## Read these first
+
+1. **This file.**
+2. **`README.md`** — the tools, what was measured, and the hazards. The
+   hazard section is why nothing here has touched the boot disk.
+3. **`src/pm1card.pas`'s header** — the rules every command obeys, and why
+   the parameter area is searched for rather than assumed.
+4. **`../PicoMEM2/README.md`** — the sibling project, same protocol,
+   different card. Its `NEXT.md` holds the firmware plan, which applies to
+   the 2 and not to this board.
+5. The card's sources, for reference only (GPLv2 — read, do not copy):
+   https://github.com/FreddyVRetro/ISA-PicoMEM. The files that matter:
+   `src/pm_cmd.cpp` (every command handler; read the one you intend to
+   send), `src/pm_defines.h` (command numbers, the shared-memory layout,
+   `BIOSVAR_t` and `PMCFG_t`), `src/isa_devices/dev_memory.h` (the memory
+   type codes), `src/pm_boards/pm.h` (this board family), `src/pm_libs/
+   pm_apps.cpp` (the card's own setup screen — it prints most of what
+   `PM1CFG` and `PM1DEV` print, which is how the port numbers were checked).
+
+## State, 2026-09-20
+
+**Works, on the hardware:** all eight tools, on a PicoMEM 1 with the BIOS of
+2025-11-02 in a Gateway 2000 386SX/25. Detection, the full configuration,
+the live memory map through command 05h, the emulated-device probe, all
+three text answers including WiFi, the AdLib scale, the benchmark, and a
+dump pulled back to Windows and checked byte for byte.
+
+**Found and fixed:** the parameter area moves between firmwares, so
+PicoMEM2's `PMPROBE` and `PMUSB` reported nothing at all on this card while
+reporting success. Both now call `FindParam`. See the README.
+
+**Not tried, because nothing was plugged in:** the USB host. This board
+family can have one and this card's firmware has it enabled
+(`EnableUSB` is 1, `USBInit` is ok), but the port was empty all session, so
+every USB answer here is `0 devices`. `PM1STAT /S=n` exists precisely for
+somebody who can plug something in and watch — start there.
+
+## Ideas not done
+
+* **A PicoMEM 1 with a device on its USB port.** The first real question:
+  does the stock firmware describe it? On the PicoMEM 2 a network adapter
+  enumerated as *one device with an empty description*, because a
+  description is only written when one of the firmware's own class drivers
+  claims it — HID, mass storage, MIDI, game pads. A USB mouse or keyboard
+  should therefore produce a *named* line here where an Ethernet adapter
+  produces a blank one. That is a ten-minute test and it has not been done.
+* **The AdLib, heard rather than detected.** `PM1OPL` proves the OPL2
+  answers and plays a scale, and nothing on the DOS side can tell whether a
+  sound came out — the card's audio output is its own hardware. Somebody
+  with ears, or with the audio side of `doscap` wired to the card rather
+  than to the PC's own video capture, could close that loop.
+* **The other emulated sound cards.** This card has Tandy, CMS, Sound
+  Blaster, Mindscape, Covox, MPU and GUS all configured off, so `PM1DEV`
+  reports them off and probes nothing. Turning one on means the card's setup
+  screen at the keyboard, and then `PM1DEV` should find it at the port
+  `PM1CFG` names. Worth doing once to prove the detection, and it is the one
+  thing here that needs a human at the machine.
+* **EMS.** Also off. The firmware's port list is `268h`, `288h`, `298h`,
+  `2A8h` with a window at `D000h` or `E000h` — and **none of them is 260h**,
+  which is the one number that matters, because that is where the CH375 card
+  lives and anything else there corrupts its reads. So a PicoMEM's EMS and a
+  CH375 can share a machine. That is worth knowing and has not been tested.
+* **`PM1BENCH` against the PicoMEM 2.** The numbers in the README are one
+  card on one machine. The 2 is an RP2350 at a higher clock on a different
+  bus interface; the same tool runs on it unchanged, and the comparison
+  would say something real about what the newer board bought.
+* **The 8259 and the card's IRQ.** `BV_IRQ` says 7 and nothing here watches
+  it. The card fires a multiplexed interrupt for its own purposes; a tool
+  that counted them over a minute would say whether it is idle.
+
+## What would need firmware, and does not belong here
+
+Everything about driving a USB device through the card. The stock firmware
+enumerates a device and then ignores it unless one of its class drivers
+claims it: there is no command that reads a descriptor, sends a control
+request or opens an endpoint. That is not a DOS-side problem and no tool in
+this folder can work around it.
+
+[`../PicoMEM2/NEXT.md`](../PicoMEM2/NEXT.md) has the proposal — a command
+group in the unused range C0h–CFh answering into the parameter area — and
+the reasons it has not been done: no ARM toolchain on the build PC, and
+flashing needs hands on the machine with a known-good image beside it. All
+of it applies to this board too, with one extra caution: **this card's
+firmware is older than the sources in that repository**, so a build from
+today's tree is not the image that is on it.

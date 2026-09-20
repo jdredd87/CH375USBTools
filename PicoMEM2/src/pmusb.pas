@@ -45,7 +45,7 @@ begin
   N := 0; Ok := False; Look := '';
   R := Command(CMD_USB_STATUS, 0, 91, Res);
   if R <> CR_OK then begin Look := 'query failed: ' + ResultName(R); Exit; end;
-  for I := 0 to High(Buf) do Buf[I] := SharedB(PARAM_OFS + I);
+  for I := 0 to High(Buf) do Buf[I] := SharedB(PmParam + I);
   Ok := True;
   Lines := Buf[0];
   if Lines = 0 then begin Look := 'USB host disabled in the card''s configuration'; Exit; end;
@@ -98,6 +98,16 @@ begin
   if not AskBios then begin WriteLn('No PicoMEM BIOS answered INT 13h AH=60h.'); Halt(20); end;
   if TestPort(PmBase, 100) <> 0 then begin WriteLn('No PicoMEM on the test port.'); Halt(20); end;
   Secs := ParseSecs;
+
+  { Find where this firmware writes its answers before reading any.
+    It costs one disk-status query, and without it a card with the
+    2025-11-02 BIOS reports nothing at all. }
+  if FindParam then begin
+    if PmParam <> PARAM_OFS then
+      WriteLn('answers are at +', PmParam, ' on this firmware, not +',
+              PARAM_OFS);
+  end else
+    WriteLn('could not find the answers area; assuming +', PmParam);
 
   T0 := Ticks;
   Last := Look(Count, Ok);

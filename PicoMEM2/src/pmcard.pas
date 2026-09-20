@@ -57,7 +57,8 @@ const
 
   SHARED_OFS = $4000;     { shared memory = ROM segment + 16 KB }
   SHARED_LEN = 8192;
-  PARAM_OFS  = 886;       { the parameter area, from the firmware's layout }
+  PARAM_OFS  = 886;       { where the BIOS of 2026-06-16 puts its answers }
+  PARAM_2025 = 374;       { where the BIOS of 2025-11-02 puts them }
 
   { how a command ended }
   CR_OK       = 0;
@@ -69,6 +70,8 @@ const
   CR_ODD      = 6;        { some other status }
 
 var
+  PmParam   : Word;       { where THIS firmware writes its text answers;
+                            PARAM_OFS until FindParam says otherwise }
   PmBase    : Word;       { I/O base }
   PmRomSeg  : Word;       { segment of the card's ROM; 0 if its BIOS did not answer }
   PmMask    : Word;       { device mask the BIOS returned }
@@ -91,6 +94,7 @@ function ResultName(R: Byte): string;
 function SharedB(Ofs: Word): Byte;
 function SharedW(Ofs: Word): Word;
 function SharedOK: Boolean;
+function FindParam: Boolean;   { sends 62h, then finds the answers area }
 
 implementation
 
@@ -281,5 +285,51 @@ function SharedOK: Boolean;
 begin
   SharedOK := (PmRomSeg <> 0) and (SharedB(0) = $12);
 end;
+
+{ *** where the answers land ***
+
+  This was written assuming 886, which is right for the PicoMEM 2's
+  BIOS of 2026-06-16 and WRONG for the PicoMEM 1's of 2025-11-02: the
+  configuration block between the two grew from 256 bytes to 768, and
+  the answers moved with it.  Assuming it meant PMPROBE reported
+  "USB: 0 line(s)" on a card that had answered perfectly well.
+
+  So find it.  The disk-status answer has a shape nothing else in the
+  shared memory has: a count byte, then that many strings, each built
+  as "   HDDn : ..." with the SECOND character overwritten by FEh for
+  the card's own menu -- so a line starts 20 FE 20 "HDD".  The count
+  byte is the one before the first of those.  Sister to the same
+  routine in PicoMEM1's pm1card.pas; keep the two in step. }
+function FindParam: Boolean;
+var Res: Word; R: Byte; I, First: Word; B0, B3: Byte;
+begin
+  FindParam := False;
+  Res := 0;
+  R := Command(CMD_DISK_STAT, 0, 91, Res);
+  if R <> CR_OK then Exit;
+
+  First := 0;
+  I := 33;
+  while I < SHARED_LEN - 8 do begin
+    if (SharedB(I) = $20) and (SharedB(I + 1) = $FE) and
+       (SharedB(I + 2) = $20) then begin
+      B3 := SharedB(I + 3);
+      if ((B3 = Ord('H')) or (B3 = Ord('F'))) and
+         (SharedB(I + 4) = Ord('D')) and (SharedB(I + 5) = Ord('D')) then begin
+        B0 := SharedB(I - 1);
+        if (B0 >= 1) and (B0 <= 6) and (First = 0) then First := I - 1;
+      end;
+    end;
+    Inc(I);
+  end;
+
+  if First <> 0 then begin
+    PmParam := First;
+    FindParam := True;
+  end;
+end;
+
+initialization
+  PmParam := PARAM_OFS;
 
 end.
