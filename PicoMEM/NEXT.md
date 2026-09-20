@@ -21,11 +21,20 @@ whoever continues it, including a fresh Claude Code instance.
 
 ## State, 2026-09-20
 
-**Works, on the hardware:** all eight tools, on a PicoMEM 1 with the BIOS of
-2025-11-02 in a Gateway 2000 386SX/25. Detection, the full configuration,
-the live memory map through command 05h, the emulated-device probe, all
-three text answers including WiFi, the AdLib scale, the benchmark, and a
-dump pulled back to Windows and checked byte for byte.
+**Works, on the hardware:** all thirteen tools, on **both cards in both
+machines** -- a PicoMEM 1 (BIOS 2025-11-02) and a PicoMEM 2 (BIOS
+2026-06-16), in a Gateway 2000 386SX/25 and an NEC V30. Detection, the full
+configuration, the live memory map through command 05h, the emulated-device
+probe, all three text answers including WiFi, the AdLib scale, the
+benchmark, a USB mouse arriving over the card's own IRQ, and a dump pulled
+back to Windows and checked byte for byte with the WiFi key blanked.
+
+Three configurations were measured, and the third one **disproved the
+conclusion drawn from the first two** -- see the README's benchmark
+sections. Two cards in one machine are indistinguishable, so the
+microcontroller is not the limit; but one card in two machines scaled with
+the CPU, so the ISA bus is not the limit either. The loop is CPU-bound and
+the card costs a fixed 11-21% per access.
 
 **Found and fixed:** the parameter area moves between firmwares, so
 the first version of these tools reported nothing at all on the older card
