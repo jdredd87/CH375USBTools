@@ -123,7 +123,7 @@ begin
 
   if AppAdded then
   begin
-    FillChar(R, SizeOf(R), 0);
+    ClearRegs(R);
     R.AH := $7F; R.AL := APP_CODE;
     R.ES := Seg(Stub); R.DX := Ofs(Stub) + ST_APP;
     Intr($14, R);
@@ -216,14 +216,14 @@ begin
   Check('0Ch peek on an empty port returns FFFFh', Peek = $FFFF);
 
   { ---- 00h, set baud, read it back through 1Bh ---- }
-  FillChar(R, SizeOf(R), 0);
+  ClearRegs(R);
   R.AH := $00; R.AL := $E3; R.DX := 0;          { 9600 8N1 }
   Intr($14, R);
   Info(Blk);
   Check('00h baud setting is reported back by 1Bh', Blk.Baud = $E3);
 
   { ---- 07h, timer tick parameters ---- }
-  FillChar(R, SizeOf(R), 0);
+  ClearRegs(R);
   R.AH := $07;
   Intr($14, R);
   Note('07h tick rate, Hz: ', R.AH);
@@ -304,63 +304,63 @@ begin
   Check('06h raising DTR again restores carrier', Carrier);
 
   { ---- 0Fh and 10h, recorded settings ---- }
-  FillChar(R, SizeOf(R), 0);
+  ClearRegs(R);
   R.AH := $0F; R.AL := $02; R.DX := 0;          { RTS/CTS }
   Intr($14, R);
   Check('0Fh flow control was accepted', True);
 
-  FillChar(R, SizeOf(R), 0);
+  ClearRegs(R);
   R.AH := $10; R.AL := $01; R.DX := 0;
   Intr($14, R);
   Check('10h returns a flag word', (R.AX = 0) or (R.AX = 1));
 
   { ---- 14h, watchdog on and off. Never allowed to fire. ---- }
-  FillChar(R, SizeOf(R), 0);
+  ClearRegs(R);
   R.AH := $14; R.AL := $01; R.DX := 0;
   Intr($14, R);
-  FillChar(R, SizeOf(R), 0);
+  ClearRegs(R);
   R.AH := $14; R.AL := $00; R.DX := 0;
   Intr($14, R);
   Check('14h watchdog enable and disable were accepted', True);
 
   { ---- 1Ah, break ---- }
-  FillChar(R, SizeOf(R), 0);
+  ClearRegs(R);
   R.AH := $1A; R.AL := $01; R.DX := 0;
   Intr($14, R);
-  FillChar(R, SizeOf(R), 0);
+  ClearRegs(R);
   R.AH := $1A; R.AL := $00; R.DX := 0;
   Intr($14, R);
   Check('1Ah break on and off were accepted', True);
 
   { ---- 0Dh, keyboard without wait. Nobody is typing, so FFFFh. ---- }
-  FillChar(R, SizeOf(R), 0);
+  ClearRegs(R);
   R.AH := $0D;
   Intr($14, R);
   Check('0Dh on an idle keyboard returns FFFFh', R.AX = $FFFF);
 
   { ---- 11h / 12h, cursor position round trip ---- }
-  FillChar(R, SizeOf(R), 0);
+  ClearRegs(R);
   R.AH := $12;
   Intr($14, R);
   Before := R.DX;
-  FillChar(R, SizeOf(R), 0);
+  ClearRegs(R);
   R.AH := $11; R.DH := 10; R.DL := 5;
   Intr($14, R);
-  FillChar(R, SizeOf(R), 0);
+  ClearRegs(R);
   R.AH := $12;
   Intr($14, R);
   Check('11h/12h cursor position round trips', (R.DH = 10) and (R.DL = 5));
-  FillChar(R, SizeOf(R), 0);                    { put it back }
+  ClearRegs(R);                    { put it back }
   R.AH := $11; R.DX := Before;
   Intr($14, R);
 
   { ---- 13h / 15h, screen writes. These go to the BIOS, so they land on
          the box's real screen and not in the captured log -- all we can
          assert from here is that they return. ---- }
-  FillChar(R, SizeOf(R), 0);
+  ClearRegs(R);
   R.AH := $15; R.AL := Ord(' ');
   Intr($14, R);
-  FillChar(R, SizeOf(R), 0);
+  ClearRegs(R);
   R.AH := $13; R.AL := Ord(' ');
   Intr($14, R);
   Check('13h and 15h screen writes returned', True);
@@ -389,7 +389,7 @@ begin
   end;
 
   { ---- 7Eh / 7Fh, an external application function ---- }
-  FillChar(R, SizeOf(R), 0);
+  ClearRegs(R);
   R.AH := $7E; R.AL := APP_CODE;
   R.ES := Seg(Stub); R.DX := Ofs(Stub) + ST_APP;
   Intr($14, R);
@@ -399,13 +399,13 @@ begin
   begin
     AppAdded := True;
 
-    FillChar(R, SizeOf(R), 0);
+    ClearRegs(R);
     R.AH := APP_CODE;
     Intr($14, R);
     Check('the installed application ran', AppCount = 1);
     Check('the application''s return value came back', R.AX = APP_MAGIC);
 
-    FillChar(R, SizeOf(R), 0);
+    ClearRegs(R);
     R.AH := $7F; R.AL := APP_CODE;
     R.ES := Seg(Stub); R.DX := Ofs(Stub) + ST_APP;
     Intr($14, R);
@@ -413,7 +413,7 @@ begin
     if R.BH = 0 then AppAdded := False;
 
     N := AppCount;
-    FillChar(R, SizeOf(R), 0);
+    ClearRegs(R);
     R.AH := APP_CODE;
     Intr($14, R);
     Check('the application stopped being called once removed',

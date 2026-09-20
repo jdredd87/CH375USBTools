@@ -7,6 +7,45 @@ release is: bump it, add an entry here, `build.cmd`, commit, `git tag -a`.
 
 ## Unreleased
 
+**Verified on a 386, and one latent bug fixed on the way.**
+
+`fosapi`, `fosbbs` and `fostest` cleared their register records with
+`FillChar` before every `Intr($14, ...)`, which also cleared the FLAGS --
+and FPC's `Intr` loads `Registers.Flags` into the CPU before the interrupt.
+A handler that ends in `IRET` then hands interrupts back DISABLED, the BIOS
+tick at 0040:006C stops, and every wait in this unit -- all of which are
+bounded by that tick -- waits for ever. `FOSSIL.COM` re-enables them
+itself, so nothing here ever showed it, but FSC-0015 says nothing about the
+interrupt flag and a driver that simply IRETs would freeze the clock of
+every program here. 43 sites now go through `ClearRegs`, which clears
+everything except the flags. The same bug, in the same shape, wedged a 386
+three times in PicoMEM2's `AskBios` before it was understood.
+
+`FOSBBS` on the LOOPBACK transport never returns, and that is not a fault:
+on loopback the BBS is its own caller -- carrier is always asserted and
+everything it sends comes straight back as input -- so `Session` never
+ends. It is written for the TCP transport and wants a caller. Run it with
+`/PKT`, or against a modem, and not on loopback.
+
+Measured on the 386 (PicoMEM 1, no coprocessor), 2026-09-20:
+
+| | |
+|---|---|
+| `FOSDET` | 10/10 |
+| `FOSTEST`, loopback | **57/57**, unchanged by the flags fix |
+| `FOSAT` through a real modem on a Keyspan adapter over the CH375 | 5/5, a 1052-byte `ATI4` at 617 bytes/s |
+| `FOSPKT` on the bridge's own packet driver at 60h | 2/2 -- both handles taken and released, and the link survived |
+| `FOSBBS` over TCP, dialled from Windows with a telnet client | a whole session: greeting, menu, time, description, housekeeping, echo, goodbye |
+| `FOSWDOG` | 2/2 -- the line opened, 75 s of silence, and the handles came back on their own. The result arriving at all is the pass |
+| the 4 KB binary download | 4,544 bytes carrying **all 256 byte values, 00h and FFh included** |
+
+One note for whoever writes the next client. The first dialler reported "no
+FFh" and it was tempting to read that as the driver losing the telnet
+escape. It was the CLIENT: a literal FFh arrives doubled (`IAC IAC`), and a
+parser that treats the pair as a command and drops both will report a clean
+8-bit test as broken -- or, worse, a broken one as clean.
+
+
 **Moved into this collection.** It was written in DOSBridge's `projects/`
 tree, which is where its test machinery lives, but the CH375 transport is
 what it is for -- it turns `CH375Serial`'s adapter work into something an

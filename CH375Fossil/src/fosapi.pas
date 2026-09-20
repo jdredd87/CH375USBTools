@@ -130,6 +130,11 @@ procedure Finish;
 function Failures: Integer;
 function Passed: Integer;
 
+{ Clear a register record for an INT 14h call WITHOUT clearing the flags.
+  Exported because the test programs build their own calls; see the
+  implementation for why the flags must survive. }
+procedure ClearRegs(var Rg: Registers);
+
 implementation
 
 const
@@ -139,6 +144,36 @@ var
   R      : Registers;
   Passes : Integer = 0;
   Fails  : Integer = 0;
+
+{ ------------------------------------------------------------------ }
+
+{ Clear a register record for an INT 14h call, WITHOUT clearing the flags.
+
+  FPC's Intr LOADS Registers.Flags into the CPU before the interrupt, so a
+  record cleared with FillChar calls the handler with interrupts DISABLED,
+  and a handler that ends in IRET hands them back that way: the BIOS tick
+  at 0040:006C stops, and anything that then waits on the clock waits for
+  ever.  That is not theory -- it wedged a 386 three times in PicoMEM2's
+  AskBios before it was understood, and it looked exactly like the hardware
+  hanging.
+
+  FOSSIL.COM re-enables them itself, which is why nothing here has ever
+  shown it, but a FOSSIL driver is not required to: FSC-0015 says nothing
+  about the interrupt flag, and any driver that simply IRETs would freeze
+  the clock of every program in this unit.  So the live flags go in. }
+function CpuFlags: Word; assembler;
+asm
+  pushf
+  pop ax
+end;
+
+procedure ClearRegs(var Rg: Registers);
+var F: Word;
+begin
+  F := CpuFlags;
+  FillChar(Rg, SizeOf(Rg), 0);
+  Rg.Flags := F;
+end;
 
 { ------------------------------------------------------------------ }
 
@@ -182,7 +217,7 @@ end;
 
 function InitRegs(var Regs: Registers): Boolean;
 begin
-  FillChar(Regs, SizeOf(Regs), 0);
+  ClearRegs(Regs);
   Regs.AH := $04; Regs.DX := 0; Regs.BX := $4F50;
   Intr($14, Regs);
   InitRegs := Regs.AX = $1954;
@@ -195,14 +230,14 @@ end;
 
 procedure Deinit;
 begin
-  FillChar(R, SizeOf(R), 0);
+  ClearRegs(R);
   R.AH := $05; R.DX := 0;
   Intr($14, R);
 end;
 
 function Status: Word;
 begin
-  FillChar(R, SizeOf(R), 0);
+  ClearRegs(R);
   R.AH := $03; R.DX := 0;
   Intr($14, R);
   Status := R.AX;
@@ -216,14 +251,14 @@ function TxEmpty: Boolean;  begin TxEmpty := (Status and $4000) <> 0; end;
 
 procedure SendWait(B: Byte);
 begin
-  FillChar(R, SizeOf(R), 0);
+  ClearRegs(R);
   R.AH := $01; R.AL := B; R.DX := 0;
   Intr($14, R);
 end;
 
 function TxNoWait(B: Byte): Boolean;
 begin
-  FillChar(R, SizeOf(R), 0);
+  ClearRegs(R);
   R.AH := $0B; R.AL := B; R.DX := 0;
   Intr($14, R);
   TxNoWait := R.AX = 1;
@@ -242,7 +277,7 @@ end;
 
 function GetCh: Byte;
 begin
-  FillChar(R, SizeOf(R), 0);
+  ClearRegs(R);
   R.AH := $02; R.DX := 0;
   Intr($14, R);
   GetCh := R.AL;
@@ -250,7 +285,7 @@ end;
 
 function Peek: Word;
 begin
-  FillChar(R, SizeOf(R), 0);
+  ClearRegs(R);
   R.AH := $0C; R.DX := 0;
   Intr($14, R);
   Peek := R.AX;
@@ -258,7 +293,7 @@ end;
 
 function WriteBlock(var B; Len: Word): Word;
 begin
-  FillChar(R, SizeOf(R), 0);
+  ClearRegs(R);
   R.AH := $19; R.CX := Len; R.DX := 0;
   R.ES := Seg(B); R.DI := Ofs(B);
   Intr($14, R);
@@ -267,7 +302,7 @@ end;
 
 function ReadBlock(var B; Max: Word): Word;
 begin
-  FillChar(R, SizeOf(R), 0);
+  ClearRegs(R);
   R.AH := $18; R.CX := Max; R.DX := 0;
   R.ES := Seg(B); R.DI := Ofs(B);
   Intr($14, R);
@@ -289,28 +324,28 @@ end;
 
 procedure Flush;
 begin
-  FillChar(R, SizeOf(R), 0);
+  ClearRegs(R);
   R.AH := $08; R.DX := 0;
   Intr($14, R);
 end;
 
 procedure PurgeIn;
 begin
-  FillChar(R, SizeOf(R), 0);
+  ClearRegs(R);
   R.AH := $0A; R.DX := 0;
   Intr($14, R);
 end;
 
 procedure PurgeOut;
 begin
-  FillChar(R, SizeOf(R), 0);
+  ClearRegs(R);
   R.AH := $09; R.DX := 0;
   Intr($14, R);
 end;
 
 procedure Dtr(Raised: Boolean);
 begin
-  FillChar(R, SizeOf(R), 0);
+  ClearRegs(R);
   R.AH := $06; R.DX := 0;
   if Raised then R.AL := 1 else R.AL := 0;
   Intr($14, R);
@@ -318,7 +353,7 @@ end;
 
 procedure SetBaud(Code: Byte);
 begin
-  FillChar(R, SizeOf(R), 0);
+  ClearRegs(R);
   R.AH := $00; R.AL := Code; R.DX := 0;
   Intr($14, R);
 end;
@@ -326,7 +361,7 @@ end;
 procedure Info(var I: TFosInfo);
 begin
   FillChar(I, SizeOf(I), 0);
-  FillChar(R, SizeOf(R), 0);
+  ClearRegs(R);
   R.AH := $1B; R.CX := SizeOf(I); R.DX := 0;
   R.ES := Seg(I); R.DI := Ofs(I);
   Intr($14, R);
@@ -398,7 +433,7 @@ end;
 
 function TickChain(TurnOn: Boolean; SegV, OfsV: Word): Boolean;
 begin
-  FillChar(R, SizeOf(R), 0);
+  ClearRegs(R);
   R.AH := $16;
   if TurnOn then R.AL := 1 else R.AL := 0;
   R.ES := SegV; R.DX := OfsV;

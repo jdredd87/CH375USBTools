@@ -250,35 +250,35 @@ var
 begin
   Ok := True;
 
-  FillChar(R, SizeOf(R), 0);
+  ClearRegs(R);
   R.AH := $00; R.AL := $E3; R.DX := 0;         { 9600 8N1 }
   Intr($14, R);
   SendLn('00h set baud     : accepted');
 
-  FillChar(R, SizeOf(R), 0);
+  ClearRegs(R);
   R.AH := $0F; R.AL := $02; R.DX := 0;
   Intr($14, R);
   SendLn('0Fh flow control : accepted');
 
-  FillChar(R, SizeOf(R), 0);
+  ClearRegs(R);
   R.AH := $10; R.AL := $01; R.DX := 0;
   Intr($14, R);
   SendLn('10h ctrl-C check : returns ' + Three(R.AX));
 
   { A real BBS turns the watchdog on so a dropped carrier reboots the
     machine. It must never fire while the line is up. }
-  FillChar(R, SizeOf(R), 0);
+  ClearRegs(R);
   R.AH := $14; R.AL := $01; R.DX := 0;
   Intr($14, R);
-  FillChar(R, SizeOf(R), 0);
+  ClearRegs(R);
   R.AH := $14; R.AL := $00; R.DX := 0;
   Intr($14, R);
   SendLn('14h watchdog     : on and off, line still up');
 
-  FillChar(R, SizeOf(R), 0);
+  ClearRegs(R);
   R.AH := $1A; R.AL := $01; R.DX := 0;
   Intr($14, R);
-  FillChar(R, SizeOf(R), 0);
+  ClearRegs(R);
   R.AH := $1A; R.AL := $00; R.DX := 0;
   Intr($14, R);
   SendLn('1Ah break        : on and off');
