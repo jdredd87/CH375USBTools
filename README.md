@@ -1,7 +1,7 @@
 # CH375USBTools — DOS tools for a WCH CH375 in USB host mode
 
-Ten projects on one ISA card, one more on a card that is not it at all, and
-no storage anywhere in sight.
+Ten projects on one ISA card, one more on the card the machines boot from,
+and no storage anywhere in sight.
 
 The WCH **CH375** is usually sold as a way to read a USB stick from an old
 machine, and every driver you can find for it does exactly that. This
@@ -14,7 +14,30 @@ Everything here has been written for, and run on, one specific computer: an
 **IBM PS/2 Model 30** — the original 8086 model, not one of the 286 or 386
 ones — running MS-DOS 6.22, with a **CH375B rev B7** on an 8-bit ISA card at
 I/O base `260h`. That machine is from 1987, nine years before USB existed,
-which is rather the point.
+which is rather the point. A **Gateway 2000 386SX/25** has since been used
+the same way, and every project here runs on both.
+
+### Why there is a PicoMEM project in a CH375 repository
+
+Because the CH375 work would not exist without one. Neither development
+machine has a working hard disk or a network card: both boot from disk
+images on a **[PicoMEM](https://github.com/FreddyVRetro/ISA-PicoMEM)** — an
+8-bit ISA card with a Raspberry Pi Pico on it — and reach the outside world
+through the NE2000-over-WiFi the same card emulates. Every source file, every
+test binary and every result in this repository crossed that card.
+
+So it is not a side quest. When the card misbehaves, *nothing* works: no
+build, no test, no way to see what happened. And until these tools existed
+there was no way to ask it anything from DOS — what it is, what it has
+mounted, what it has mapped over your memory, whether the device you plugged
+into it was even seen. [PicoMEM](PicoMEM/) is the answer to "is it the card
+or is it us?", which on this hardware is the first question worth asking.
+
+It is also why those tools are so careful. **The card is the boot disk**, and
+every sector DOS reads is a command on the same I/O port the tools use, so
+they send only read-only queries from a whitelist enforced in the one routine
+that writes that port. A stuck command is a machine that cannot read its own
+disk.
 
 > **[Read GUIDE.md](GUIDE.md)** — the complete guide: every tool, what works
 > and what does not, the hardware limits and why they are limits, and
@@ -35,7 +58,7 @@ which is rather the point.
 | **[CH375Serial](CH375Serial/)** | **It talks to a modem.** DOS drives a USB-to-serial adapter and holds an AT-command conversation with a USRobotics Courier V.Everything at up to **38400 baud**. The ceiling is the USB packet rate, not the UART — the same number that set the video project's frame rate and killed the audio one |
 | **[CH375Fossil](CH375Fossil/)** | **A modem that is not there.** `FOSSIL.COM` -- an FSC-0015 FOSSIL driver, all thirty `INT 14h` functions, so unmodified DOS software believes there is a modem on COM1. Underneath is either a USB-to-serial adapter on the CH375, or a TCP listener on any packet driver. A BBS written in 1991 cannot tell |
 | **[CH375Camera](CH375Camera/)** | **A 1998 webcam taking photographs.** An IBM PC Camera streams video isochronously at 225 KB/s into a chip with no isochronous mode; it works anyway, because an isochronous *IN* is just a packet the chip receives, and the camera's own window registers let a picture be taken as full-height 64-pixel strips, one frame each. Stills at 176x144, 320x240 and 352x288 in 1.5-2.2 s, saved as BMP, or shown live-ish in VESA, mode X, 13h, 12h, half-block text or ASCII |
-| **[PicoMEM](PicoMEM/)** | **Not a CH375 at all: the PicoMEM card each machine boots from, read from DOS.** Twelve tools -- what the card is, its whole configuration, its **live** memory map asked block by block, which of its emulated devices actually answer (there is a working AdLib in the machine and no sound card in it), its text answers, a scale through that AdLib, a USB mouse arriving byte by byte, a watcher over all 8 KB of its shared memory, what it costs to talk to, and a dump that blanks the WiFi key. Everything runs on a PicoMEM 1 and a PicoMEM 2 unchanged, and has been run on both. The stock firmware cannot pass a USB device through to DOS; `NEXT.md` is the plan for firmware that can |
+| **[PicoMEM](PicoMEM/)** | **Not a CH375 at all: the card both development machines boot from and reach the network through, read from DOS.** It is here because every build and every test in this repository arrives over that card, so knowing what it is doing is part of the toolchain. Twelve tools -- what the card is, its whole configuration, its **live** memory map asked block by block, which of its emulated devices actually answer (there is a working AdLib in the machine and no sound card in it), its text answers, a scale through that AdLib, a USB mouse arriving byte by byte, a watcher over all 8 KB of its shared memory, what it costs to talk to, and a dump that blanks the WiFi key. Everything runs on a PicoMEM 1 and a PicoMEM 2 unchanged, and has been run on both. The stock firmware cannot pass a USB device through to DOS; `NEXT.md` is the plan for firmware that can |
 
 Each project has its own `README.md`, `CHANGELOG.md`, `build.cmd` and
 `bin\`. The binaries are committed deliberately: the machine this targets

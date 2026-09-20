@@ -60,13 +60,19 @@ times the Model 30 and it found two faults the 8086 never could -- see
 [On a 286/386/486](#on-a-286386486-the-runtime-hooks-int-10h). Everything
 below still describes the 8086, because that is what the code targets.
 
-Both machines boot from a **PicoMEM** ISA card and reach the network through
-it, and the cards are swapped between them -- so which card is in which box
-is a fact with a date on it. [PicoMEM](PicoMEM/) reads them -- one toolset
-for both cards, run on both -- and it is not about the CH375 at all; it is in
-this collection because the bridge that builds and tests everything here runs
-over those cards' WiFi. `PM1INFO` identifies the card from the BIOS date in
-its ROM, which is the only reliable way to tell one from the other.
+**Both machines boot from a PicoMEM ISA card and reach the network through
+it.** Neither has a working hard disk or a network card of its own: the disk
+images live on the PicoMEM's SD card, and the network is an NE2000 the same
+card emulates over WiFi. Every source file, test binary and result in this
+collection crossed one of those cards.
+
+That is why [PicoMEM](PicoMEM/) is here despite having nothing to do with
+the CH375. When the card misbehaves nothing works -- no build, no test, no
+way to see what happened -- and there was no way to ask it anything from DOS
+until those tools existed. One toolset covers both cards and has been run on
+both. `PMINFO` identifies which is fitted from the BIOS date in its ROM; the
+cards get swapped between the machines, so "which card is in which box" is a
+fact with a date on it, and reading the ROM is the only way to settle it.
 
 ```
 Machine    IBM PS/2 Model 30 (8086)

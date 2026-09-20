@@ -13,7 +13,15 @@ the RP2350 board. Everything here runs on both, unchanged, and has been run on
 both.
 
 One of the projects in [CH375USBTools](../README.md), and not about the CH375
-at all. Written in Pascal from reading the card's published firmware and BIOS
+at all. **It is in that collection because the collection depends on it**:
+neither development machine has a working hard disk or a network card, so
+both boot from disk images on a PicoMEM and reach the outside world through
+the NE2000 the same card emulates over WiFi. Every source file, test binary
+and result in that repository crossed one of these cards. When one
+misbehaves, nothing builds and nothing runs -- and there was no way to ask it
+anything from DOS until these tools existed.
+
+Written in Pascal from reading the card's published firmware and BIOS
 sources (GPLv2); no code is taken from them, and nothing here is a port of
 anything.
 
