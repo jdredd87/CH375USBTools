@@ -170,14 +170,15 @@ endif
 	ret
 read_186:
     inc cx			; Make it even
-	shr	cx,1		; word count
+	shr	cx,1		; word count, rounded up: covers an odd byte too
 	.286
 	rep	insw
 	.8086
-	jnc	read_186_1		;is there an extra byte?
-	in	ax,dx			;yes, read the next word and store a
-	stosb				;  byte.
-read_186_1:
+; The stock NE2000 driver follows this with "jnc / in ax,dx / stosb" to
+; pick up an odd last byte. Here the count was already rounded up, and the
+; carry after that SHR is set exactly when the count was EVEN -- so it read
+; one word past the programmed DMA count and stored a byte past the buffer
+; on every even-length read. The rounded REP INSW has already done the job.
 	ret
 ;
 ;	Block output routine
@@ -267,7 +268,7 @@ endif
 
 	public	copyright_msg
 if PicoMEM  eq 1
-copyright_msg	db	"PicoMEM (NE2000) Packet Driver 0.5-SC1, version "
+copyright_msg	db	"PicoMEM (NE2000) Packet Driver 0.5-SC2, version "
 else
 copyright_msg	db	"Packet driver for NE2000, version "
 endif

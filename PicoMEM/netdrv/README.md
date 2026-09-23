@@ -36,7 +36,7 @@ Three files, and nothing on any other CPU's path:
 | `TAIL.ASM` | after the shift test, an 8086 answer is asked one more question: `AAD` with a base of 11. Intel honours the base and answers 11; NEC ignores it and answers 10 -- the same probe `starter/cpu.pas` in DOSBridge uses. The banner says `NEC V20/V30 processor (REP INS/OUTS)` when it fires |
 | `PM2000.ASM` | `block_input` and `block_output` use `REP INSB` / `REP OUTSB` when `has_ins` is set and `is_186` is not. The byte count is rounded up to even first, exactly as the old loop did, so the card sees the same bus traffic |
 
-The version string is `0.5-SC1`, so a loaded copy says which it is.
+The version string is `0.5-SC1` (`0.5-SC2` since; see below), so a loaded copy says which it is.
 
 A genuine 8086/8088 still takes the byte loop, and a 186/286/386 still takes
 `REP INSW` -- both byte-identical to the original code.
@@ -65,6 +65,22 @@ CRC-32s `DD7975E3` and `C959DFA4`, identical to the source files. Every
 DOSBridge job while SC1 was loaded -- the jobs, their results, deploys --
 also travelled over it.
 
+## SC2, and the 386SX
+
+`0.5-SC2` also fixes the `REP INSW` bug described under "Not changed" below:
+the extra word read is gone, since the rounded-up count already covers an
+odd byte. It is the build in `bin\`. On the V30 it measures the same as SC1
+(7.4 s / 32.5 s / 61.2 s for 1 / 5 / 10 MB) with a 10 MB download CRC-exact,
+as expected -- the V30 never takes that path.
+
+**The 386SX test is incomplete.** SC2 loaded on it (`1445:03D0`, two bytes
+past the original's handler -- the two new flags) and carried its polls and
+job results, so the fixed `REP INSW` path does move packets both ways. But
+its CRC-checked download never came back, and no timing run finished: the
+machine's PicoMEM 1 was failing through the afternoon and then **died
+outright on 2026-09-23**. A 286 or 486 takes the same path, so a 386 with a
+working card is still the test that covers all three.
+
 ## Not changed, and why
 
 * **`pause_`** -- a `push ax / in al,61h / pop ax` before every NIC register
@@ -76,12 +92,12 @@ also travelled over it.
   is split correctly depends on the motherboard's bus logic, which on an
   8086-class board is not a given. The bus cycles are the same count either
   way, so the win would be small.
-* **A latent bug on the 286/386 path, found reading it**: `read_186` does
-  `inc cx / shr cx,1 / jnc`, and the carry after that is set when the
-  original count was *even* -- so every even-length read fetches one extra
-  word past the programmed DMA count and stores one byte past the buffer.
-  It has not been seen to break anything, and fixing it is a 386 test,
-  which has not been done yet.
+* **A latent bug on the 286/386 path, found reading it** -- fixed in SC2,
+  above: `read_186` did `inc cx / shr cx,1 / jnc`, and the carry after that
+  is set when the original count was *even* -- so every even-length read
+  fetched one extra word past the programmed DMA count and stored one byte
+  past the buffer. SC1 left it alone; it had not been seen to break
+  anything.
 
 ## Building
 

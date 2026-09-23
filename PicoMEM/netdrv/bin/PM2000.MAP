@@ -1,6 +1,6 @@
 JWlink Version 2.0
 Portions Copyright (c) 1985-2002 Sybase, Inc. All Rights Reserved.
-Created on:       26/09/23 11:52:03
+Created on:       26/09/23 14:51:16
 Executable Image: bin\PM2000.COM
 creating a DOS .COM executable
 Warning! W1028: HW_INT_NO is an undefined reference
@@ -23,7 +23,7 @@ Group                           Address              Size
 Segment                Class          Group          Address         Size
 =======                =====          =====          =======         ====
 
-CODE                                  AUTO           0000:0000       000022a6
+CODE                                  AUTO           0000:0000       000022a2
 
 
                         +----------------+
@@ -72,66 +72,66 @@ Module: build\HEAD.OBJ(HEAD.ASM)
 0000:002c      PHD_ENVIRON
 0000:0a9d*     SEND_DEQUEUE
 Module: build\PM2000.OBJ(PM2000.ASM)
-0000:1249      END_RESIDENT
+0000:1245      END_RESIDENT
 0000:0adc      IO_ADDR
 0000:0aec      DRIVER_FUNCTION
 0000:0ad8      INT_NO
 0000:0ae0      DRIVER_CLASS
-0000:131f      USAGE_MSG
-0000:0e55*     RESET_BOARD
+0000:131b      USAGE_MSG
+0000:0e51*     RESET_BOARD
 0000:0ae3      DRIVER_TYPE
-0000:0db9      SET_ADDRESS
-0000:0e94      TERMINATE
-0000:0bdd*     MCAST_LIST_BITS
+0000:0db5      SET_ADDRESS
+0000:0e90      TERMINATE
+0000:0bd9*     MCAST_LIST_BITS
 0000:0ae5      DRIVER_NAME
-0000:124a      ETOPEN
-0000:1194      SET_MULTICAST_LIST
-0000:0be5*     MCAST_ALL_FLAG
-0000:0c3c*     SOFT_RX_OVERRUNS
-0000:1249      END_FREE_MEM
-0000:1397      PARSE_ARGS
-0000:0c34*     SOFT_TX_COLLISIONS
-0000:0c5a      AS_SEND_PKT
-0000:1349      COPYRIGHT_MSG
-0000:0c10*     BOARD_DATA
-0000:0e95      RESET_INTERFACE
-0000:0c5b      DROP_PKT
+0000:1246      ETOPEN
+0000:1190      SET_MULTICAST_LIST
+0000:0be1*     MCAST_ALL_FLAG
+0000:0c38*     SOFT_RX_OVERRUNS
+0000:1245      END_FREE_MEM
+0000:1393      PARSE_ARGS
+0000:0c30*     SOFT_TX_COLLISIONS
+0000:0c56      AS_SEND_PKT
+0000:1345      COPYRIGHT_MSG
+0000:0c0c*     BOARD_DATA
+0000:0e91      RESET_INTERFACE
+0000:0c57      DROP_PKT
 0000:0aed      PARAMETER_LIST
-0000:112e*     RCV_FRM
-0000:0be6      RCV_MODES
-0000:0c90      SEND_PKT
-0000:1248      TIMER_ISR
-0000:0c48*     SOFT_TX_ERR_BITS
-0000:0c49*     SOFT_RX_ERR_BITS
-0000:0c40*     SOFT_RX_OVER_ND
-0000:0c56      BAD_COMMAND_INTERCEPT
-0000:0c38*     SOFT_RX_ERRORS
-0000:0eb1      RECV
+0000:112a*     RCV_FRM
+0000:0be2      RCV_MODES
+0000:0c8c      SEND_PKT
+0000:1244      TIMER_ISR
+0000:0c44*     SOFT_TX_ERR_BITS
+0000:0c45*     SOFT_RX_ERR_BITS
+0000:0c3c*     SOFT_RX_OVER_ND
+0000:0c52      BAD_COMMAND_INTERCEPT
+0000:0c34*     SOFT_RX_ERRORS
+0000:0ead      RECV
 0000:0afb*     BLOCK_INPUT
-0000:1403      PRINT_PARAMETERS
-0000:0c30*     SOFT_ERRORS
-0000:0c30*     SOFT_TX_ERRORS
-0000:0c5c      XMIT
+0000:13ff      PRINT_PARAMETERS
+0000:0c2c*     SOFT_ERRORS
+0000:0c2c*     SOFT_TX_ERRORS
+0000:0c58      XMIT
 Module: build\TAIL.OBJ(TAIL.ASM)
-0000:1499*     BYTEOUT
-0000:14ba*     CRLF
-0000:1a0c*     ERROR
-0000:19e6      ETOPEN_DIAGN
-0000:1ea0*     GET_HEX
-0000:14d8*     MALLOC
-0000:22a5      BRANDING_MSG
-0000:1f08*     GET_DIGIT
-0000:1416*     IS_EISA
-0000:1492*     WORDOUT
-0000:148b*     DWORDOUT
-0000:1f39*     PRINT_ETHER_ADDR
-0000:14cb*     CHROUT
-0000:1a15      START_1
-0000:14a8*     DIGOUT
-0000:1448*     DECOUT
-0000:1f2e*     SKIP_BLANKS
-0000:1417      PRINT_NUMBER
-0000:1e9b      GET_NUMBER
+0000:1495*     BYTEOUT
+0000:14b6*     CRLF
+0000:1a08*     ERROR
+0000:19e2      ETOPEN_DIAGN
+0000:1e9c*     GET_HEX
+0000:14d4*     MALLOC
+0000:22a1      BRANDING_MSG
+0000:1f04*     GET_DIGIT
+0000:1412*     IS_EISA
+0000:148e*     WORDOUT
+0000:1487*     DWORDOUT
+0000:1f35*     PRINT_ETHER_ADDR
+0000:14c7*     CHROUT
+0000:1a11      START_1
+0000:14a4*     DIGOUT
+0000:1444*     DECOUT
+0000:1f2a*     SKIP_BLANKS
+0000:1413      PRINT_NUMBER
+0000:1e97      GET_NUMBER
 
 
                         +-----------------------+
@@ -139,6 +139,6 @@ Module: build\TAIL.OBJ(TAIL.ASM)
                         +-----------------------+
 
 Stack size:  1000 (4096.)
-Memory size:  22a6 (8870.)
+Memory size:  22a2 (8866.)
 Entry point address: 0000:0100
-Link time: 00:00.15
+Link time: 00:00.31

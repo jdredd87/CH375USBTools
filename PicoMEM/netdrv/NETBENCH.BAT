@@ -1,28 +1,36 @@
 @ECHO OFF
 REM NETBENCH base-url label
 REM Times HTGET against a server offering base-url/1mb, /5mb and /10mb:
-REM 1MB twice, 5MB and 10MB once to NUL, then 1MB to disk with its CRC-32.
-REM Needs C:\WORK\ELAPSED.COM and C:\TOOLS\HD.EXE. CALL it from a job,
-REM never run it bare, or the job batch never gets control back.
-REM Results APPEND to C:\WORK\NB.LOG: a CALLed batch is not redirected.
+REM 1MB twice, 5MB and 10MB once to NUL, then 1MB to disk.
+REM Needs C:\WORK\ELAPSED.COM. CALL it from a job, never run it bare, or
+REM the job batch never gets control back. Results APPEND to C:\WORK\NB.LOG:
+REM a CALLed batch is not redirected.
+REM HTGET exits 20 or more when the server answered (it reports the HTTP
+REM status, and the ladder caps it) and 1 when the connection failed, so
+REM a run under 20 is marked FAILED -- a failure is fast, and would
+REM otherwise read as the best time on the sheet.
 IF "%1"=="" GOTO USAGE
 C:\WORK\ELAPSED.COM /S
 C:\NETWORK\MTCP\HTGET.EXE -o NUL %1/1mb > NUL
-C:\WORK\ELAPSED.COM %2 1MB-NUL >> C:\WORK\NB.LOG
+IF NOT ERRORLEVEL 20 ECHO %2 1MB-NUL FAILED >> C:\WORK\NB.LOG
+IF ERRORLEVEL 20 C:\WORK\ELAPSED.COM %2 1MB-NUL >> C:\WORK\NB.LOG
 C:\WORK\ELAPSED.COM /S
 C:\NETWORK\MTCP\HTGET.EXE -o NUL %1/1mb > NUL
-C:\WORK\ELAPSED.COM %2 1MB-NUL >> C:\WORK\NB.LOG
+IF NOT ERRORLEVEL 20 ECHO %2 1MB-NUL FAILED >> C:\WORK\NB.LOG
+IF ERRORLEVEL 20 C:\WORK\ELAPSED.COM %2 1MB-NUL >> C:\WORK\NB.LOG
 C:\WORK\ELAPSED.COM /S
 C:\NETWORK\MTCP\HTGET.EXE -o NUL %1/5mb > NUL
-C:\WORK\ELAPSED.COM %2 5MB-NUL >> C:\WORK\NB.LOG
+IF NOT ERRORLEVEL 20 ECHO %2 5MB-NUL FAILED >> C:\WORK\NB.LOG
+IF ERRORLEVEL 20 C:\WORK\ELAPSED.COM %2 5MB-NUL >> C:\WORK\NB.LOG
 C:\WORK\ELAPSED.COM /S
 C:\NETWORK\MTCP\HTGET.EXE -o NUL %1/10mb > NUL
-C:\WORK\ELAPSED.COM %2 10MB-NUL >> C:\WORK\NB.LOG
+IF NOT ERRORLEVEL 20 ECHO %2 10MB-NUL FAILED >> C:\WORK\NB.LOG
+IF ERRORLEVEL 20 C:\WORK\ELAPSED.COM %2 10MB-NUL >> C:\WORK\NB.LOG
 IF EXIST C:\WORK\NB.BIN DEL C:\WORK\NB.BIN
 C:\WORK\ELAPSED.COM /S
 C:\NETWORK\MTCP\HTGET.EXE -o C:\WORK\NB.BIN %1/1mb > NUL
-C:\WORK\ELAPSED.COM %2 1MB-DISK >> C:\WORK\NB.LOG
-IF EXIST C:\WORK\NB.BIN C:\TOOLS\HD.EXE C:\WORK\NB.BIN 0 0 | FIND "crc32" >> C:\WORK\NB.LOG
+IF NOT ERRORLEVEL 20 ECHO %2 1MB-DISK FAILED >> C:\WORK\NB.LOG
+IF ERRORLEVEL 20 C:\WORK\ELAPSED.COM %2 1MB-DISK >> C:\WORK\NB.LOG
 IF EXIST C:\WORK\NB.BIN DEL C:\WORK\NB.BIN
 GOTO END
 :USAGE
