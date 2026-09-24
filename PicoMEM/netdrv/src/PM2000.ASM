@@ -69,9 +69,11 @@ pause_	macro
 ; machine.
 ;   - gft - 910529
 ;
+If PM_NoPause eq 0
 	push	ax
 	in	al, 61h
 	pop	ax
+endif
 ;
 endm
 
@@ -268,7 +270,7 @@ endif
 
 	public	copyright_msg
 if PicoMEM  eq 1
-copyright_msg	db	"PicoMEM (NE2000) Packet Driver 0.5-SC2, version "
+copyright_msg	db	"PicoMEM (NE2000) Packet Driver 0.5-SC3, version "
 else
 copyright_msg	db	"Packet driver for NE2000, version "
 endif

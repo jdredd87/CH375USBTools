@@ -36,7 +36,7 @@ Three files, and nothing on any other CPU's path:
 | `TAIL.ASM` | after the shift test, an 8086 answer is asked one more question: `AAD` with a base of 11. Intel honours the base and answers 11; NEC ignores it and answers 10 -- the same probe `starter/cpu.pas` in DOSBridge uses. The banner says `NEC V20/V30 processor (REP INS/OUTS)` when it fires |
 | `PM2000.ASM` | `block_input` and `block_output` use `REP INSB` / `REP OUTSB` when `has_ins` is set and `is_186` is not. The byte count is rounded up to even first, exactly as the old loop did, so the card sees the same bus traffic |
 
-The version string is `0.5-SC1` (`0.5-SC2` since; see below), so a loaded copy says which it is.
+The version string is `0.5-SC1` (`SC2` and `SC3` since; see below), so a loaded copy says which it is.
 
 A genuine 8086/8088 still takes the byte loop, and a 186/286/386 still takes
 `REP INSW` -- both byte-identical to the original code.
@@ -69,7 +69,7 @@ also travelled over it.
 
 `0.5-SC2` also fixes the `REP INSW` bug described under "Not changed" below:
 the extra word read is gone, since the rounded-up count already covers an
-odd byte. It is the build in `bin\`. On the V30 it measures the same as SC1
+odd byte. On the V30 it measures the same as SC1
 (7.4 s / 32.5 s / 61.2 s for 1 / 5 / 10 MB) with a 10 MB download CRC-exact,
 as expected -- the V30 never takes that path.
 
@@ -81,13 +81,40 @@ machine's PicoMEM 1 was failing through the afternoon and then **died
 outright on 2026-09-23**. A 286 or 486 takes the same path, so a 386 with a
 working card is still the test that covers all three.
 
+## SC3: the register pauses, and where the ceiling now is
+
+`pause_` put a `push ax / in al,61h / pop ax` before every NIC register
+access -- 197 of them in the source, about 25 per received packet -- for real
+DP8390s, which need four bus clocks between chip selects. The PicoMEM
+emulates the chip and answers each cycle itself, and `REP INSB` was already
+hitting its data port back to back without them. `PM_NoPause` in
+`PICOMEM.INC` now switches them off (0 restores the original timing); the
+binary is 344 bytes smaller. **SC3 is the build in `bin\`.**
+
+Measured on the V30, SC3 / SC2 / SC3 swapped live in the same half hour:
+
+| | SC2 | SC3 | SC3 again |
+|---|---|---|---|
+| 1 MB  | 7.5 / 7.4 s | 7.5 / 7.5 s | 7.5 / 7.3 s |
+| 5 MB  | 33.0 s | 32.5 s | 32.5 s |
+| 10 MB | 61.5 s | 60.7 s | 60.2 s |
+
+**About 1-2%**, the same direction at every size that is long enough to
+resolve it. Real, and as small as the arithmetic said. A 10 MB download
+through SC3 came back CRC-exact (`C959DFA4`), after about 45 MB of benchmark
+traffic and every bridge job of the evening had crossed it.
+
+That is the more useful result: **the driver is no longer where the time
+goes.** Removing a quarter of its register traffic moved the total by the
+width of the noise, so what remains -- about 8.5 ms per full packet at
+~170 KB/s -- is mTCP on a ~8 MHz CPU, the card's WiFi bridge, and the round
+trips, none of which a packet driver can touch. The 386SX makes the same
+point from the other side: in the V30's room, with a CPU four to five times
+faster, it managed 1 MB in 24.5 s against the V30's 7.4 -- on a PicoMEM 1
+that died hours later, but the CPU was plainly not what limited it.
+
 ## Not changed, and why
 
-* **`pause_`** -- a `push ax / in al,61h / pop ax` before every NIC register
-  access, for real 8390s that need four bus clocks between chip selects. The
-  PicoMEM emulates the chip and does not, but it is about 25 per packet, a
-  few microseconds each: under 1% of a packet's time. Not worth a change to
-  every register access for.
 * **`REP INSW` on the V30.** The card is 8-bit; whether a 16-bit `IN` to it
   is split correctly depends on the motherboard's bus logic, which on an
   8086-class board is not a given. The bus cycles are the same count either
