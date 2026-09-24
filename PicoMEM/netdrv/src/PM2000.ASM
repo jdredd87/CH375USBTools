@@ -1,5 +1,14 @@
 version	equ	4
 ;History:76,1 0
+;
+; 0.5-SC1..SC4, 2026-09-23: optimized by StevenC
+;   https://github.com/jdredd87/CH375USBTools  (PicoMEM/netdrv)
+;   - NEC V20/V30 detected by AAD and given REP INSB/OUTSB (it fails the
+;     186 shift test, so it used to copy one byte per IN/STOSB)
+;   - REP INSW path no longer reads a word past the DMA count
+;   - PM_NoPause: no dummy port 61h read before NIC register accesses
+;   Changes are GPL v1 like the rest of this file.
+;
 
 ;  The following people have contributed to this code: David Horne, Eric
 ;  Henderson, and Bob Clements.
@@ -270,11 +279,15 @@ endif
 
 	public	copyright_msg
 if PicoMEM  eq 1
-copyright_msg	db	"PicoMEM (NE2000) Packet Driver 0.5-SC3, version "
+copyright_msg	db	"PicoMEM (NE2000) Packet Driver 0.5-SC4, version "
 else
 copyright_msg	db	"Packet driver for NE2000, version "
 endif
-		db	'0'+(majver / 10),'0'+(majver mod 10),".",'0'+version,".",'0'+dp8390_version,CR,LF,'$'
+		db	'0'+(majver / 10),'0'+(majver mod 10),".",'0'+version,".",'0'+dp8390_version,CR,LF
+if PicoMEM  eq 1
+		db	"Optimized by StevenC: REP INS/OUTS on NEC V20/V30, no NIC pauses",CR,LF
+endif
+		db	'$'
 
 int_no_name	db	"Interrupt ",'$'
 io_addr_name	db	"I/O port ",'$'

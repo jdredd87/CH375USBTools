@@ -89,7 +89,14 @@ DP8390s, which need four bus clocks between chip selects. The PicoMEM
 emulates the chip and answers each cycle itself, and `REP INSB` was already
 hitting its data port back to back without them. `PM_NoPause` in
 `PICOMEM.INC` now switches them off (0 restores the original timing); the
-binary is 344 bytes smaller. **SC3 is the build in `bin\`.**
+binary is 344 bytes smaller.
+
+**SC4 is SC3 plus attribution, and is the build in `bin\`.** Its banner has a
+second line, `Optimized by StevenC: REP INS/OUTS on NEC V20/V30, no NIC
+pauses`, and `PM2000.ASM` has a header note listing the changes. The
+Crynwr and PicoMEM notices are all still there, as the GPL requires. No
+code changed, so SC3's numbers are SC4's; it has been the V30's boot
+driver since 2026-09-23 (CRC `29B31ADB`).
 
 Measured on the V30, SC3 / SC2 / SC3 swapped live in the same half hour:
 
