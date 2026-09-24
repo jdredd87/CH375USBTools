@@ -798,3 +798,7 @@ bug.
 ---
 
 Public domain (the Unlicense); see [LICENSE](../LICENSE).
+
+---
+
+Written by **StevenC** and **Claude** (Anthropic): StevenC guiding, deciding and testing on real hardware, Claude doing most of the analysis, code and measurement.

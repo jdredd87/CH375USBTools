@@ -982,3 +982,7 @@ next caller for two minutes), window scaling, or any TCP option at all.
 * **Carrier detect is real on FTDI only.** It comes from bit 7 of the first
   status byte on every IN packet. The Keyspan's one-byte header is not
   decoded, so DCD there will read as whatever `ser_lines` last set.
+
+---
+
+Written by **StevenC** and **Claude** (Anthropic): StevenC guiding, deciding and testing on real hardware, Claude doing most of the analysis, code and measurement.

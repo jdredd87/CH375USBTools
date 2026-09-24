@@ -1994,5 +1994,6 @@ loops back.
 Needs Free Pascal cross-compiling to `i8086-msdos`. `ch375.pas` and
 `chtool.pas` come from `..\CH375USBTOOLS\src` via `-Fu`.
 
-Public domain, under [the Unlicense](https://unlicense.org). Written by
-**StevenC**.
+Public domain, under [the Unlicense](https://unlicense.org).
+
+Written by **StevenC** and **Claude** (Anthropic): StevenC guiding, deciding and testing on real hardware, Claude doing most of the analysis, code and measurement.

@@ -525,4 +525,5 @@ repository root.
 **Public domain**, under [the Unlicense](https://unlicense.org) — see
 `LICENSE` at the repository root.
 
-Written by **StevenC**. <https://github.com/jdredd87/CH375USBTools>
+Written by **StevenC** and **Claude** (Anthropic): StevenC guiding, deciding and testing on real hardware, Claude doing most of the analysis, code and measurement.
+<https://github.com/jdredd87/CH375USBTools>

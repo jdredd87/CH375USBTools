@@ -350,4 +350,5 @@ The one exception is `CH375Mouse/tools/MNASMFIX.COM`, which is somebody
 else's work and stays under their terms. Delete it if you would rather not
 carry it: nothing depends on it, and `nasm` builds the identical image.
 
-Written by **StevenC**. <https://github.com/jdredd87/CH375USBTools>
+Written by **StevenC** and **Claude** (Anthropic): StevenC guiding, deciding and testing on real hardware, Claude doing most of the analysis, code and measurement.
+<https://github.com/jdredd87/CH375USBTools>

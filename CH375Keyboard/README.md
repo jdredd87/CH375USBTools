@@ -408,3 +408,7 @@ keyboard. `USBKBD /U` or a power cycle is the way out.
 Exit codes must be ≤ 20, filenames are 8.3, and a DOS critical error blocks
 forever and looks exactly like a hang. See `CLAUDE.md` at the DOSBridge
 repository root.
+
+---
+
+Written by **StevenC** and **Claude** (Anthropic): StevenC guiding, deciding and testing on real hardware, Claude doing most of the analysis, code and measurement.

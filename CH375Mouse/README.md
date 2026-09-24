@@ -522,7 +522,7 @@ It was validated offline against both captures plus a synthetic Microsoft
 stream, an all-zero buffer and noise, before being built — which cost
 nothing and saved asking a human to wave a mouse at it five more times.
 
-**Version 1.0.0** · StevenC · <https://github.com/jdredd87/CH375USBTools>
+**Version 1.0.0** · StevenC and Claude · <https://github.com/jdredd87/CH375USBTools>
 
 `USBMOUSE.COM` is a resident DOS mouse driver that gets its input from a USB
 HID mouse plugged into the WCH **CH375** ISA card at I/O `260h`. It enumerates
@@ -1249,3 +1249,7 @@ brought the output back.
 [mininasm](https://github.com/pts/mininasm) with the read-only-output bug
 patched out, bundled so the driver can be rebuilt on the DOS machine with
 nothing else present.
+
+---
+
+Written by **StevenC** and **Claude** (Anthropic): StevenC guiding, deciding and testing on real hardware, Claude doing most of the analysis, code and measurement.

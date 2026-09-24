@@ -1,6 +1,6 @@
 # Changelog
 
-CH375Audio -- StevenC -- https://github.com/jdredd87/CH375USBTools
+CH375Audio -- StevenC and Claude -- https://github.com/jdredd87/CH375USBTools
 
 The version lives in the `VER` constant of each tool in `src/`. A release
 is: bump it, add an entry here, `build.cmd`, commit, `git tag -a`.

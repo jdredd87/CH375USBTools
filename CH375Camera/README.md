@@ -442,3 +442,7 @@ The register sequences come from Linux's
 which learned them from the Windows driver; the YUV layout from libv4lconvert.
 Everything about windows, FIFOs, strips, header bytes and the button was
 measured on this camera.
+
+---
+
+Written by **StevenC** and **Claude** (Anthropic): StevenC guiding, deciding and testing on real hardware, Claude doing most of the analysis, code and measurement.

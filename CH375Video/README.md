@@ -898,3 +898,7 @@ tool here accepts `-K` as well; `cmd` and PowerShell pass either form.
    CPU-bound here and everything else is transfer-bound; on a faster CPU
    the cube would join the others, and only then would `REP OUTSB` or a
    coprocessor be worth re-measuring.
+
+---
+
+Written by **StevenC** and **Claude** (Anthropic): StevenC guiding, deciding and testing on real hardware, Claude doing most of the analysis, code and measurement.

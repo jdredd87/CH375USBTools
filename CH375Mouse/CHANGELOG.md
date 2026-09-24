@@ -1,6 +1,6 @@
 # Changelog
 
-CH375Mouse -- StevenC -- https://github.com/jdredd87/CH375USBTools
+CH375Mouse -- StevenC and Claude -- https://github.com/jdredd87/CH375USBTools
 
 The version lives in `ver_str` in `src/usbmouse.asm` and nowhere else. A
 release is: bump it, add an entry here, `build.cmd`, commit, `git tag -a`.

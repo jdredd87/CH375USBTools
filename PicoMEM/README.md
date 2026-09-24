@@ -665,3 +665,7 @@ Gateway.
 | `src/pmmtest.pas`, `pmwatch.pas` | the mouse path, and the whole-memory watcher |
 | `src/pmcmdt.pas`, `pmtick.pas` | the two diagnostics that found the `Intr` hang, kept because the hang is the kind that recurs |
 | `NEXT.md` | what is left, and what would need firmware |
+
+---
+
+Written by **StevenC** and **Claude** (Anthropic): StevenC guiding, deciding and testing on real hardware, Claude doing most of the analysis, code and measurement.

@@ -1,6 +1,6 @@
 # Changelog
 
-CH375Net -- StevenC -- https://github.com/jdredd87/CH375USBTools
+CH375Net -- StevenC and Claude -- https://github.com/jdredd87/CH375USBTools
 
 Versions live in the `VER` constant of each program.
 

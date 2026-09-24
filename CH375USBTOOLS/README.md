@@ -294,3 +294,7 @@ One thing deliberately **not** shared is `CLD`. The FOSSIL driver's copy of
 `bulk_out_ser` had grown one, the mouse's had not, and adding it would have
 broken byte-identity for no behavioural gain -- DF is clear by DOS
 convention on both paths. The caller clears it instead.
+
+---
+
+Written by **StevenC** and **Claude** (Anthropic): StevenC guiding, deciding and testing on real hardware, Claude doing most of the analysis, code and measurement.

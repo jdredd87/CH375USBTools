@@ -1,6 +1,6 @@
 # Changelog
 
-CH375USBTOOLS -- StevenC -- https://github.com/jdredd87/CH375USBTools
+CH375USBTOOLS -- StevenC and Claude -- https://github.com/jdredd87/CH375USBTools
 
 ## Unreleased
 
