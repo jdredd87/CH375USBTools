@@ -1,6 +1,6 @@
 program serterm;
 { SERTERM -- an ANSI terminal on a USB-to-serial adapter, driven by a CH375.
-  CH375Serial, StevenC.  Public domain (the Unlicense).
+  CH375Serial, StevenC & Claude.  Public domain (the Unlicense).
 
     SERTERM [/P=260] [/C=n] [/B=9600] [/8|/7] [/E|/O] [/2] [/F=n]
             [/L] [/D=num] [/Q] [/T]

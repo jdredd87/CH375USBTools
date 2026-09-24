@@ -1,5 +1,5 @@
 program evtest;
-{ INT 33h event-handler test  --  CH375Mouse, StevenC
+{ INT 33h event-handler test  --  CH375Mouse, StevenC & Claude
   Public domain (the Unlicense); see LICENSE.
 
   Function 0Ch installs a callback plus a mask of the events an application

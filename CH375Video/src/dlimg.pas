@@ -1,6 +1,6 @@
 program dlimg;
 { DLIMG -- load an image file and display it, scaled to fit.
-  CH375Video, StevenC.  Public domain (the Unlicense).
+  CH375Video, StevenC & Claude.  Public domain (the Unlicense).
 
     DLIMG file [/P=260] [/M=n] [/F=fit|fill|one] [/S=secs] [/I]
 

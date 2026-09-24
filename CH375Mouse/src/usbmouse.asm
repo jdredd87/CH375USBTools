@@ -2,7 +2,7 @@
 ; USBMOUSE.COM -- a DOS INT 33h mouse driver fed by a USB HID mouse
 ;                 attached to a WCH CH375 in host mode.
 ;
-;   Version 1.0.0                                                  StevenC
+;   Version 1.0.0                                                  StevenC & Claude
 ;   https://github.com/jdredd87/CH375USBToolsTools
 ;   Public domain (the Unlicense).  Do anything you like with it.
 ;
@@ -4013,7 +4013,7 @@ got_ep:     db  0
 
 msg_ok:        db ' resident.  INT 33h installed.', 13, 10, '$'
 msg_prog:      db 'USBMOUSE $'
-msg_by:        db ' -- StevenC', 13, 10, '$'
+msg_by:        db ' -- StevenC & Claude', 13, 10, '$'
 msg_t_conn:    db '  connect          : $'
 msg_t_conn2:   db '  connect after reset: $'
 msg_t_rate:    db '  device rate reg 07 : $'
@@ -4093,6 +4093,6 @@ msg_help:
         db 13, 10
         db 'Options may be combined, in any order:  USBMOUSE @260 /R=4 /V', 13, 10
         db 13, 10
-        db 'StevenC   https://github.com/jdredd87/CH375USBToolsTools', 13, 10
+        db 'StevenC & Claude   https://github.com/jdredd87/CH375USBTools', 13, 10
         db 'Public domain (the Unlicense).  Do anything you like with it.', 13, 10
         db '$'

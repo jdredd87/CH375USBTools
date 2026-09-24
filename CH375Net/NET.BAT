@@ -1,7 +1,7 @@
 @ECHO OFF
 REM  NET    -- load the packet driver for the USB Ethernet adapter.
 REM  NET U  -- unload it again.
-REM  StevenC.  Public domain.  DO NOT put this in AUTOEXEC.BAT:
+REM  StevenC & Claude.  Public domain.  DO NOT put this in AUTOEXEC.BAT:
 REM  loaded from the prompt a mistake costs a power cycle, loaded
 REM  at boot it costs a walk to the machine.
 REM

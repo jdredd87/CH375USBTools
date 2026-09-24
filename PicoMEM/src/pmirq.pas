@@ -1,6 +1,6 @@
 program pmirq;
 { PMIRQ -- can we hook an interrupt, chain it, and come back alive?
-  PicoMEM tools, StevenC.  Public domain (the Unlicense).
+  PicoMEM tools, StevenC & Claude.  Public domain (the Unlicense).
 
     PMIRQ /A [/S=n]      phase A: hook INT 1Ch and count ticks
     PMIRQ /B [/S=n]      phase B: hook the card's IRQ and count mouse events
@@ -157,7 +157,7 @@ var
   Rc: Integer;
 begin
   Args;
-  WriteLn('PMIRQ ', VER, ' -- hook an interrupt, chain it, come back');
+  WriteLn('PMIRQ ', VER, ' -- hook an interrupt, chain it, come back', ' -- StevenC & Claude');
   Rc := 0;
   Hits := 0; AccX := 0; AccY := 0; BtnSeen := 0;
 

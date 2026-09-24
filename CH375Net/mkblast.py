@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Blast UDP datagrams whose payload states where it belongs.
 
-CH375Net, StevenC.  Public domain (the Unlicense).
+CH375Net, StevenC & Claude.  Public domain (the Unlicense).
 
     python mkblast.py <dos-ip> [--port 9999] [--secs 120] [--rate 40]
 

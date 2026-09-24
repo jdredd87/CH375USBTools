@@ -1,5 +1,5 @@
 program clicktst;
-{ Button diagnostic for USBMOUSE  --  CH375Mouse, StevenC
+{ Button diagnostic for USBMOUSE  --  CH375Mouse, StevenC & Claude
   Public domain (the Unlicense); see LICENSE.
 
   Movement working while clicks do not splits the problem cleanly in two,

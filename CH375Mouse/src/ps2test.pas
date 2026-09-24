@@ -1,5 +1,5 @@
 program ps2test;
-{ PS/2 BIOS mouse emulation test  --  CH375Mouse, StevenC
+{ PS/2 BIOS mouse emulation test  --  CH375Mouse, StevenC & Claude
   Public domain (the Unlicense); see LICENSE.
 
   USBMOUSE /W makes the USB mouse look like a PS/2 pointing device to the

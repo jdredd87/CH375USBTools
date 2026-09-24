@@ -1,6 +1,6 @@
 program dlcon;
 { DLCON -- a text console on a DisplayLink adapter, from real-mode DOS.
-  CH375Video, StevenC.  Public domain (the Unlicense).
+  CH375Video, StevenC & Claude.  Public domain (the Unlicense).
 
     DLCON [/P=260] [/M=n] [/F=file] [/T=text] [/S=secs] [/C=hex] [/B=hex]
 

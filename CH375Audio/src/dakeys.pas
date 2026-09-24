@@ -1,7 +1,7 @@
 program dakeys;
 { DAKEYS -- read the transport and volume buttons on a USB audio device
   over a CH375, from its HID interrupt endpoint.
-  CH375Audio, StevenC.  Public domain (the Unlicense).
+  CH375Audio, StevenC & Claude.  Public domain (the Unlicense).
 
     DAKEYS [/P=260] [/I=n] [/S=secs] [/X] [/T]
 

@@ -1,6 +1,6 @@
 unit camdisp;
 { CAMDISP -- every way this machine can put a camera picture on its
-  screen.  CH375Camera, StevenC.  Public domain (the Unlicense).
+  screen.  CH375Camera, StevenC & Claude.  Public domain (the Unlicense).
 
   The camera gives 176x144, 320x240 or 352x288; the screen can be any of
 

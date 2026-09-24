@@ -2,7 +2,7 @@
 ; USBPKT.COM -- a Crynwr packet driver for an ASIX AX88179 USB Ethernet
 ;              adapter reached through a CH375 in host mode.
 ;
-;   CH375Net, StevenC.  Public domain (the Unlicense).
+;   CH375Net, StevenC & Claude.  Public domain (the Unlicense).
 ;
 ;   USBPKT [@260] [/I=65] [/S] [/U] [/V] [/G] [/?]
 ;

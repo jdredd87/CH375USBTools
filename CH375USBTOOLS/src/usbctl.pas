@@ -1,6 +1,6 @@
 program usbctl;
 { USBCTL -- issue an arbitrary USB control transfer over a CH375.
-  CH375USBTOOLS, StevenC.  Public domain (the Unlicense).
+  CH375USBTOOLS, StevenC & Claude.  Public domain (the Unlicense).
 
   The poking tool.  Everything else in the suite decides for you what to
   ask a device; this asks exactly what you type and shows every stage of

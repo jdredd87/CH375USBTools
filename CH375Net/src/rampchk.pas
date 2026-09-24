@@ -2,7 +2,7 @@ program RampChk;
 
 { RAMPCHK -- check a downloaded test file against the ramp it should be.
 
-  CH375Net, StevenC.  Public domain (the Unlicense).
+  CH375Net, StevenC & Claude.  Public domain (the Unlicense).
 
       RAMPCHK file [/Q]
       RAMPCHK file /W=<bytes>      write a ramp instead of checking one
@@ -185,7 +185,7 @@ end;
 
 procedure Usage;
 begin
-  WriteLn('RAMPCHK ', VER, ' -- is this file the 00..FF ramp it should be?');
+  WriteLn('RAMPCHK ', VER, ' -- is this file the 00..FF ramp it should be?', ' -- StevenC & Claude');
   WriteLn;
   WriteLn('  RAMPCHK file [/Q]');
   WriteLn('  RAMPCHK file /W=<bytes>   WRITE a ramp of that size');

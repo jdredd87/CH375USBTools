@@ -1,6 +1,6 @@
 program camsnap;
 { CAMSNAP -- take a still photograph with an IBM PC Camera over a CH375.
-  CH375Camera, StevenC.  Public domain (the Unlicense).
+  CH375Camera, StevenC & Claude.  Public domain (the Unlicense).
 
     CAMSNAP [/P=260] [/M=320] [/O=SNAP] [/G] [/B=32] [/T=n] [/H=n] [/V]
 

@@ -1,6 +1,6 @@
 program kbdbios;
 { KBDBIOS -- dump the BIOS keyboard data area.
-  CH375Keyboard, StevenC.  Public domain (the Unlicense).
+  CH375Keyboard, StevenC & Claude.  Public domain (the Unlicense).
 
   A resident keyboard driver does not own the keyboard state; it borrows it.
   Everything it touches -- the three shift bytes, the buffer head and tail,

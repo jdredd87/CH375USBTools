@@ -1,6 +1,6 @@
 program pminfo;
 { PMINFO -- what is this PicoMEM, and how did it come up?
-  PicoMEM tools, StevenC.  Public domain (the Unlicense).
+  PicoMEM tools, StevenC & Claude.  Public domain (the Unlicense).
 
     PMINFO [/Q] [/X] [/P=2A0]
 
@@ -193,7 +193,7 @@ var
   S: string;
 begin
   Args;
-  WriteLn('PMINFO ', VER, ' -- a PicoMEM card, as DOS can see it');
+  WriteLn('PMINFO ', VER, ' -- a PicoMEM card, as DOS can see it', ' -- StevenC & Claude');
 
   if AskBios then
     WriteLn('BIOS      : answered -- base ', Hex4(PmBase), 'h, ROM ',

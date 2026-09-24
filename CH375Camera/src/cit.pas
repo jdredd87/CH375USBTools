@@ -1,6 +1,6 @@
 unit cit;
 { CIT -- the Xirlink C-It camera chip behind the IBM PC Camera, over a CH375.
-  CH375Camera, StevenC.  Public domain (the Unlicense).
+  CH375Camera, StevenC & Claude.  Public domain (the Unlicense).
 
   Everything the camera tools share: finding the camera, poking its
   registers, and the start and stop sequences.  The register sequences are

@@ -1,6 +1,6 @@
 program usbrecv;
 { USBRECV -- watch Ethernet frames arrive through an AX88179 on a CH375.
-  CH375Net, StevenC.  Public domain (the Unlicense).
+  CH375Net, StevenC & Claude.  Public domain (the Unlicense).
 
   Step two.  USBLINK proved the control path; this proves the data path,
   and works out what the receive buffer actually looks like.

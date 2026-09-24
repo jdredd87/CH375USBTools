@@ -1,6 +1,6 @@
 program camprobe;
 { CAMPROBE -- will an IBM PC Camera's isochronous video come through a
-  CH375 at all?  CH375Camera, StevenC.  Public domain (the Unlicense).
+  CH375 at all?  CH375Camera, StevenC & Claude.  Public domain (the Unlicense).
 
     CAMPROBE [/P=260] [/W=320] [/F=0] [/K=64] [/N=3000] [/D=6] [/B=32] [/O=file] [/V] [/X]
 

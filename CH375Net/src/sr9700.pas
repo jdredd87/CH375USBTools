@@ -1,6 +1,6 @@
 unit sr9700;
 { sr9700 -- CoreChip SR9700 / Davicom DM9601 USB Ethernet, over a CH375.
-  CH375Net, StevenC.  Public domain (the Unlicense).
+  CH375Net, StevenC & Claude.  Public domain (the Unlicense).
 
   The register interface is the DM9601's and the SR9700 inherits it, so one
   unit covers both.  What differs between real parts and the clones sold

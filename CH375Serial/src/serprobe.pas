@@ -1,7 +1,7 @@
 program serprobe;
 { SERPROBE -- identify a USB-to-serial adapter over a CH375 and work out how
   it would have to be driven.
-  CH375Serial, StevenC.  Public domain (the Unlicense).
+  CH375Serial, StevenC & Claude.  Public domain (the Unlicense).
 
     SERPROBE [/P=260] [/C=n] [/S=secs] [/E=n] [/V] [/T]
 

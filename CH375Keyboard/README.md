@@ -242,7 +242,7 @@ That check needs no keyboard and no human.
 ## What a loaded driver looks like
 
 ```
-USBKBD 1.7.1 -- StevenC
+USBKBD 1.7.1 -- StevenC & Claude
   connect            : 15
   connect after reset: 15
   device rate reg 07 : 11

@@ -1,5 +1,5 @@
 program combotst;
-{ Conformance and diagnostic suite for USBCOMBO.COM  --  CH375Combo, StevenC
+{ Conformance and diagnostic suite for USBCOMBO.COM  --  CH375Combo, StevenC & Claude
   Public domain (the Unlicense); see LICENSE.
 
   USBCOMBO has three things that can fail independently: the USB half, the

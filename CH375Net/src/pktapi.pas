@@ -1,7 +1,7 @@
 { ==========================================================================
   PktApi -- a Crynwr packet driver client that talks to the vector YOU name.
 
-  StevenC -- https://github.com/jdredd87/CH375USBTools
+  StevenC & Claude -- https://github.com/jdredd87/CH375USBTools
   Public domain (the Unlicense); see LICENSE.
 
   Why this exists rather than reusing something that already works: every

@@ -1,7 +1,7 @@
 program dldash;
 { DLDASH -- a colour dashboard on a DisplayLink adapter: boxes, gauges,
   a scrolling ticker, and a live keyboard.
-  CH375Video, StevenC.  Public domain (the Unlicense).
+  CH375Video, StevenC & Claude.  Public domain (the Unlicense).
 
     DLDASH [/P=260] [/M=n] [/S=secs] [/K] [/R=n]
 

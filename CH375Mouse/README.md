@@ -403,7 +403,7 @@ where a report came from. `apply_report` takes three bytes (buttons, dx, dy)
 and a serial packet decodes into exactly those.
 
 ```
-USBMOUSE 1.1.0 -- StevenC
+USBMOUSE 1.1.0 -- StevenC & Claude
 Serial mouse on a USB adapter: bulk IN 1, control OUT 2, VID/PID 06CD/0121
 USBMOUSE 1.1.0 resident.  INT 33h installed.
 ```
@@ -538,7 +538,7 @@ It is written in assembly and assembles either with `nasm` on Windows or with
 mouse (VID `093A`, PID `2510`) on a CH375B rev B7:
 
 ```
-USBMOUSE 1.0.0 -- StevenC
+USBMOUSE 1.0.0 -- StevenC & Claude
 Low-speed device; USB bus set to 1.5 Mbps.
 USB mouse on CH375: endpoint 1, HID interface 0, VID/PID 093A/2510
 USBMOUSE 1.0.0 resident.  INT 33h installed.
@@ -604,7 +604,7 @@ The driver carries a version number from 1.0.0 onwards, and prints it on
 every run:
 
 ```
-USBMOUSE 1.0.0 -- StevenC
+USBMOUSE 1.0.0 -- StevenC & Claude
 ```
 
 It is written down in exactly one place — `ver_str` in `src/usbmouse.asm`,
@@ -1103,7 +1103,7 @@ building the moment the handler returned. The offset is `[bp+8]`.
 `build.cmd test` loads the driver, runs `MOUSETST` and unloads:
 
 ```
-USBMOUSE 1.0.0 -- StevenC
+USBMOUSE 1.0.0 -- StevenC & Claude
 Low-speed device; USB bus set to 1.5 Mbps.
 USB mouse on CH375: endpoint 1, HID interface 0, VID/PID 093A/2510
 USBMOUSE 1.0.0 resident.  INT 33h installed.
@@ -1116,7 +1116,7 @@ watching for real USB reports for about 10 seconds
   live position 325,0 buttons 0
 
 34/34 checks passed.
-USBMOUSE 1.0.0 -- StevenC
+USBMOUSE 1.0.0 -- StevenC & Claude
 USBMOUSE unloaded.
 ```
 

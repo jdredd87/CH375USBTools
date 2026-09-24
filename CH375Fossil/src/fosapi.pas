@@ -21,7 +21,7 @@ unit fosapi;
   and real BBS software depends on it, so the driver does not bound it.
   Check RxReady first if a hang would cost you a trip to the machine.
 
-  StevenC -- https://github.com/jdredd87/CH375USBTools
+  StevenC & Claude -- https://github.com/jdredd87/CH375USBTools
   Public domain (the Unlicense). }
 
 {$MODE OBJFPC}{$H-}

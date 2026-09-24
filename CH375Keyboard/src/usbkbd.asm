@@ -2,7 +2,7 @@
 ; USBKBD.COM -- a DOS keyboard driver fed by a USB HID keyboard attached
 ;               to a WCH CH375 in host mode.
 ;
-;   Version 1.7.1                                                  StevenC
+;   Version 1.7.1                                                  StevenC & Claude
 ;   CH375Keyboard.  Public domain (the Unlicense).
 ;
 ; The version number is written down in exactly one place: ver_str, just
@@ -3386,7 +3386,7 @@ desc_buf:   times 64 db 0
 cfg_buf:    times 128 db 0
 
 msg_prog:      db 'USBKBD $'
-msg_by:        db ' -- StevenC', 13, 10, '$'
+msg_by:        db ' -- StevenC & Claude', 13, 10, '$'
 msg_ok:        db 'USBKBD resident.  Keys go to the BIOS buffer.', 13, 10, '$'
 msg_found:     db 'USB keyboard on CH375: endpoint $'
 msg_iface:     db ', HID interface $'

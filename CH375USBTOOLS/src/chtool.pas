@@ -1,6 +1,6 @@
 unit chtool;
 { CHTOOL -- the banner, the version and the /? convention every program in
-  CH375USBTools shares.  CH375USBTools, StevenC.  Public domain.
+  CH375USBTools shares.  CH375USBTools, StevenC & Claude.  Public domain.
 
   Every tool in every one of the four projects starts the same way:
 
@@ -28,7 +28,7 @@ unit chtool;
 interface
 
 const
-  AUTHOR  = 'StevenC';
+  AUTHOR  = 'StevenC & Claude';
   PROJECT = 'CH375USBTools';
   REPO    = 'https://github.com/jdredd87/CH375USBTools';
 
@@ -38,7 +38,7 @@ const
   DEF_BASE = $260;
 
 { The first line of output from every tool:
-    USBINFO 1.0.0 -- dump everything a USB device will tell you -- StevenC
+    USBINFO 1.0.0 -- dump everything a USB device will tell you -- StevenC & Claude
   Prog is upper case because that is how it is typed at the DOS prompt, and
   the author is on this line rather than only in the /? footer so that a
   program run WITHOUT /? still says who wrote it -- which is how the three

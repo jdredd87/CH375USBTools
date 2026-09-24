@@ -23,13 +23,13 @@ Written by **StevenC** and **Claude** (Anthropic): ...      (a README)
 
 * A `Co-Authored-By: Claude` commit trailer does not count on its own -- the
   credit belongs where a reader sees it.
-* **Banners already compiled into shipped drivers stay as they are** until
-  that driver next changes for its own reasons (`USBKBD 1.7.1 -- StevenC`,
-  `FOSSIL 0.1.0 -- StevenC`, ...). Rebuilding a driver for a credit line alone
-  changes a binary that is installed on real machines. When one does change,
-  its banner gains Claude in the same release.
-* **A README that quotes a banner is quoting real output**, so it stays as
-  printed until the binary changes.
+* **Every binary was rebuilt with the credit on 2026-09-24** and deployed
+  to the V30 (`C:\CH375\<PROJECT>\`, all 82 CRC-checked). Versions were
+  not bumped for it -- no code changed -- and each CHANGELOG says so. A
+  new banner names both from the start.
+* Not credited, on purpose: `CH375Mouse/tools/MNASMFIX.COM` (someone
+  else's), `PicoMEM/netdrv/orig/` (the untouched upstream the build is
+  checked against), and `CH375Net/bin/cbtest.exe` (no source here).
 * Everything else is public domain (the Unlicense) and needs no credit at
   all, legally -- this is about saying truthfully who did the work.
   `PicoMEM/netdrv/` is the exception: Crynwr GPL source, whose notices must

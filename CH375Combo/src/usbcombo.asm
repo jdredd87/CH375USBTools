@@ -2,7 +2,7 @@
 ; USBCOMBO.COM -- one DOS driver for a USB keyboard AND a USB mouse sharing
 ;                 a single WCH CH375 in host mode.
 ;
-;   Version 1.0.0                                                  StevenC
+;   Version 1.0.0                                                  StevenC & Claude
 ;   CH375Combo.  Public domain (the Unlicense).
 ;
 ; WHY THIS EXISTS.  USBMOUSE.COM and USBKBD.COM cannot both be loaded.  Each
@@ -5832,7 +5832,7 @@ desc_buf:   times 64 db 0
 cfg_buf:    times 128 db 0
 
 msg_prog:      db 'USBCOMBO $'
-msg_by:        db ' -- StevenC', 13, 10, '$'
+msg_by:        db ' -- StevenC & Claude', 13, 10, '$'
 msg_v15:       db '  hooked INT 15h', 13, 10, '$'
 msg_v11:       db '  hooked INT 11h', 13, 10, '$'
 msg_v74:       db '  hooked INT 74h', 13, 10, '$'

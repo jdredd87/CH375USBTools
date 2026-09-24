@@ -1,6 +1,6 @@
 program kbcinj;
 { KBCINJ -- prove 8042 command D2h works on this machine.
-  CH375Keyboard, StevenC.  Public domain (the Unlicense).
+  CH375Keyboard, StevenC & Claude.  Public domain (the Unlicense).
 
   `USBKBD /K` delivers keys by handing scancodes to the keyboard controller
   with command D2h, so they arrive as real IRQ1 interrupts and are

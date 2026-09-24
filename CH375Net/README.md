@@ -153,7 +153,7 @@ running here at full speed, 12 Mbps.
 ## What works today
 
 ```
-USBLINK 0.2.0 -- AX88179 bring-up over a CH375 -- StevenC
+USBLINK 0.2.0 -- AX88179 bring-up over a CH375 -- StevenC & Claude
 device   : 0B95:1790
 bus      : full speed (12 Mbps)
 
@@ -186,7 +186,7 @@ One command, the way `NE2000.COM` is one command:
 
 ```
 C:\CH375> USBPKT
-USBPKT 0.1.0 -- StevenC
+USBPKT 0.1.0 -- StevenC & Claude
 Bringing the adapter up... link up.
 MAC address: 40:AE:30:6D:00:34
 Resident at vector 65h.
@@ -1681,7 +1681,7 @@ So the rules for anything in this project that goes resident:
    still there.
 
 ```
-PKTSCAN 1.0.0 -- packet drivers in the interrupt table -- StevenC
+PKTSCAN 1.0.0 -- packet drivers in the interrupt table -- StevenC & Claude
 
   60h  15A2:03CE   PACKET DRIVER
 

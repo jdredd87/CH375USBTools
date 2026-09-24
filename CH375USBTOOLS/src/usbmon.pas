@@ -1,6 +1,6 @@
 program usbmon;
 { USBMON -- watch the USB port for things being plugged in and pulled out.
-  CH375USBTOOLS, StevenC.  Public domain (the Unlicense).
+  CH375USBTOOLS, StevenC & Claude.  Public domain (the Unlicense).
 
   Everything else in the suite takes one look at whatever is attached.  This
   sits on the port instead, so hot-plug behaviour can be observed: how long

@@ -1,5 +1,5 @@
 program mousetst;
-{ INT 33h conformance test for USBMOUSE.COM  --  CH375Mouse, StevenC
+{ INT 33h conformance test for USBMOUSE.COM  --  CH375Mouse, StevenC & Claude
   Public domain (the Unlicense); see LICENSE.
 
   The USB half of this driver and its INT 33h half fail independently, so

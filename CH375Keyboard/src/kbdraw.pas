@@ -1,6 +1,6 @@
 program kbdraw;
 { KBDRAW -- watch a USB keyboard's boot reports and what they translate to.
-  CH375Keyboard, StevenC.  Public domain (the Unlicense).
+  CH375Keyboard, StevenC & Claude.  Public domain (the Unlicense).
 
   The non-resident half of this project, and the one to run first.  It does
   everything USBKBD.COM does except go resident: enumerates the keyboard,

@@ -1,6 +1,6 @@
 program pkttick;
 { PKTTICK -- is polling from a timer interrupt what breaks the receive path?
-  CH375Net, StevenC.  Public domain (the Unlicense).
+  CH375Net, StevenC & Claude.  Public domain (the Unlicense).
 
   A controlled experiment, and nothing else.  USBPKT reads the bulk endpoint
   from inside INT 08h and wedges after a frame or two; USBRECV reads it from

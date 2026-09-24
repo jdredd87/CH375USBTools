@@ -1,6 +1,6 @@
 program dlfract;
 { DLFRACT -- compute a Mandelbrot set in fixed point and show it over USB.
-  CH375Video, StevenC.  Public domain (the Unlicense).
+  CH375Video, StevenC & Claude.  Public domain (the Unlicense).
 
     DLFRACT [/P=260] [/M=n] [/W=n] [/I=n] [/S=secs] [/R] [/8] [/Z=n]
 

@@ -4,6 +4,14 @@ CH375Net -- StevenC and Claude -- https://github.com/jdredd87/CH375USBTools
 
 Versions live in the `VER` constant of each program.
 
+## Unreleased
+
+**Rebuilt 2026-09-24 for the credit, and nothing else.** Every program's
+banner now ends `-- StevenC & Claude`, and every source header says the
+same. No code changed and no version was bumped, so this build shares its
+version numbers with the one before it -- the CRC tells them apart.
+Deployed to the V30 under `C:\CH375\` and CRC-checked there.
+
 ## USBPKT drives the SR9700, and mTCP runs over it
 
 The third chipset, and the first one chosen by USB ID rather than by what

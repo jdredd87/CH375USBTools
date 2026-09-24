@@ -1,6 +1,6 @@
 program fasttest;
 { FASTTEST -- check camfast's assembly against the Pascal it replaced, on
-  the machine itself, and time it.  CH375Camera, StevenC.  Public domain.
+  the machine itself, and time it.  CH375Camera, StevenC & Claude.  Public domain.
 
   Random inputs, every routine, every output byte compared.  Exit code is
   the number of routines with any mismatch (0 = all agree). }
@@ -36,7 +36,7 @@ begin
 end;
 
 begin
-  WriteLn('FASTTEST -- camfast against the Pascal it replaced');
+  WriteLn('FASTTEST -- camfast against the Pascal it replaced -- StevenC & Claude');
   Bad := 0;
   RandSeed := 7;
   for I := 0 to FMAX + 1 do begin FA[I] := Random(256); FC[I] := Random(256); end;

@@ -1,6 +1,6 @@
 unit pmcard;
 { PMCARD -- talking to a PicoMEM card from real-mode DOS.
-  PicoMEM tools, StevenC.  Public domain (the Unlicense).
+  PicoMEM tools, StevenC & Claude.  Public domain (the Unlicense).
 
   ONE unit for both cards.  It began as two -- a PicoMEM 2 project and
   a PicoMEM 1 one -- and they were merged once every tool had been run

@@ -1,6 +1,6 @@
 @ECHO OFF
 REM CAMTEST.BAT -- every test CH375Camera has, one after another.
-REM CH375Camera, StevenC.  Public domain (the Unlicense).
+REM CH375Camera, StevenC & Claude.  Public domain (the Unlicense).
 REM
 REM   CAMTEST          all of it, including the two button tests, which
 REM                    beep when it is time to press.  Nothing ever waits

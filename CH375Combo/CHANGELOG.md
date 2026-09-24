@@ -2,6 +2,14 @@
 
 All notable changes to `USBCOMBO.COM` and its test program.
 
+## Unreleased
+
+**Rebuilt 2026-09-24 for the credit, and nothing else.** Every program's
+banner now ends `-- StevenC & Claude`, and every source header says the
+same. No code changed and no version was bumped, so this build shares its
+version numbers with the one before it -- the CRC tells them apart.
+Deployed to the V30 under `C:\CH375\` and CRC-checked there.
+
 ## 1.1.0 -- 2026-09-08
 
 * **`/S` reports the I/O base the resident copy is using**, printed above

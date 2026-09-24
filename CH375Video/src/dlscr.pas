@@ -1,6 +1,6 @@
 unit dlscr;
 { A text screen with colour and dirty tracking, drawn over DisplayLink.
-  CH375Video, StevenC.  Public domain (the Unlicense).
+  CH375Video, StevenC & Claude.  Public domain (the Unlicense).
 
   DLCON drew a page and stopped. Anything interactive -- a terminal, a
   dashboard, a gauge that moves -- needs the opposite: a screen you change

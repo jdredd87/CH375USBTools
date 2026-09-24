@@ -1,7 +1,7 @@
 program netid;
 { NETID -- what USB network adapter is plugged into the CH375, and can this
   project drive it?
-  CH375Net, StevenC.  Public domain (the Unlicense).
+  CH375Net, StevenC & Claude.  Public domain (the Unlicense).
 
     NETID [/P=260] [/V]
 

@@ -6,7 +6,7 @@ SET TEMP=C:\WINDOWS\TEMP
 doskey 
 REM ctmouse /S1 /M /3 
 C:\drivers\pm2000.com 0x60
-REM ---- USB Ethernet adapter on the CH375 card.  StevenC.
+REM ---- USB Ethernet adapter on the CH375 card.  StevenC & Claude.
 REM ---- pm2000 above keeps 60h and loads FIRST no matter what, so the
 REM ---- network this box is administered over survives anything here.
 REM ---- USBPKT brings the adapter up itself.  USBLINK is NOT used at

@@ -1,5 +1,5 @@
 program mousedemo;
-{ Live INT 33h mouse demo  --  CH375Mouse, StevenC
+{ Live INT 33h mouse demo  --  CH375Mouse, StevenC & Claude
   Public domain (the Unlicense); see LICENSE.
 
   Shows the text-mode cursor and then sits reading the mouse, so the pointer

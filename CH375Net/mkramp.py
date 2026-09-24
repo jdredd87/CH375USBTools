@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Generate the ramp fixtures RAMPCHK is tested and used with.
 
-CH375Net, StevenC.  Public domain (the Unlicense).
+CH375Net, StevenC & Claude.  Public domain (the Unlicense).
 
     python mkramp.py [--out DIR] [--stage DIR]
 

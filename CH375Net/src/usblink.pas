@@ -1,6 +1,6 @@
 program usblink;
 { USBLINK -- bring up an ASIX AX88179 USB Ethernet adapter over a CH375.
-  CH375Net, StevenC.  Public domain (the Unlicense).
+  CH375Net, StevenC & Claude.  Public domain (the Unlicense).
 
   Step one of the networking project, and the one that decided whether the
   rest was worth writing.  It runs the initialisation sequence in

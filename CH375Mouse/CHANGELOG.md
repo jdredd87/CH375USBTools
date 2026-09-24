@@ -5,6 +5,14 @@ CH375Mouse -- StevenC and Claude -- https://github.com/jdredd87/CH375USBTools
 The version lives in `ver_str` in `src/usbmouse.asm` and nowhere else. A
 release is: bump it, add an entry here, `build.cmd`, commit, `git tag -a`.
 
+## Unreleased
+
+**Rebuilt 2026-09-24 for the credit, and nothing else.** Every program's
+banner now ends `-- StevenC & Claude`, and every source header says the
+same. No code changed and no version was bumped, so this build shares its
+version numbers with the one before it -- the CRC tells them apart.
+Deployed to the V30 under `C:\CH375\` and CRC-checked there.
+
 ## 1.1.0 -- a serial mouse on a USB-to-serial adapter
 
 `USBMOUSE.COM` now drives two kinds of mouse through the same `INT 33h`: a

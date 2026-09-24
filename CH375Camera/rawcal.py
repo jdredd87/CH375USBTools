@@ -1,4 +1,4 @@
-"""rawcal.py -- read a CAMCAL recording.  CH375Camera, StevenC.  Public domain.
+"""rawcal.py -- read a CAMCAL recording.  CH375Camera, StevenC & Claude.  Public domain.
 
     python rawcal.py CAL.DAT
 

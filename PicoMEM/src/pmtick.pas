@@ -1,6 +1,6 @@
 program pmtick;
 { PMTICK -- does the PC's clock keep running after a PicoMEM command?
-  PicoMEM tools, StevenC.  Public domain (the Unlicense).
+  PicoMEM tools, StevenC & Claude.  Public domain (the Unlicense).
 
     PMTICK [/C-]       /C- : do NOT send the command (the control run)
 
@@ -97,7 +97,7 @@ begin
     DOS would otherwise run with them off too }
   asm sti end;
 
-  WriteLn('PMTICK ', VER, ' -- the PC clock around one PicoMEM command');
+  WriteLn('PMTICK ', VER, ' -- the PC clock around one PicoMEM command', ' -- StevenC & Claude');
   if Send then WriteLn('command 61h: ', ResultName(R), ', status ', Hex2(PmLastSt))
   else WriteLn('control run: no command sent');
   Show('before', Before);

@@ -2,7 +2,7 @@ unit Ecm;
 
 { CDC-ECM -- USB Ethernet the way the SPEC says, not the way one vendor did.
 
-  CH375Net, StevenC.  Public domain (the Unlicense).
+  CH375Net, StevenC & Claude.  Public domain (the Unlicense).
 
   WHY THIS IS WORTH HAVING
 

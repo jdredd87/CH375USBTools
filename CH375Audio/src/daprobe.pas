@@ -1,7 +1,7 @@
 program daprobe;
 { DAPROBE -- identify a USB audio device over a CH375 and decode its Audio
   Class descriptors.
-  CH375Audio, StevenC.  Public domain (the Unlicense).
+  CH375Audio, StevenC & Claude.  Public domain (the Unlicense).
 
     DAPROBE [/P=260] [/V] [/T]
 

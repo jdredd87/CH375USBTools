@@ -1,5 +1,5 @@
 """ans2png.py -- render CAMSNAP's .ANS half-block art as a PNG.
-CH375Camera, StevenC.  Public domain (the Unlicense).
+CH375Camera, StevenC & Claude.  Public domain (the Unlicense).
 
     python ans2png.py SNAP.ANS SNAP-ANSI.PNG [pixels-per-half-cell]
 

@@ -5,6 +5,14 @@ CH375Camera -- StevenC and Claude -- https://github.com/jdredd87/CH375USBTools
 The version lives in the `VER` constant of each tool in `src/`. A release
 is: bump it, add an entry here, `build.cmd`, commit, `git tag -a`.
 
+## Unreleased
+
+**Rebuilt 2026-09-24 for the credit, and nothing else.** Every program's
+banner now ends `-- StevenC & Claude`, and every source header says the
+same. No code changed and no version was bumped, so this build shares its
+version numbers with the one before it -- the CRC tells them apart.
+Deployed to the V30 under `C:\CH375\` and CRC-checked there.
+
 ## 0.2 -- 2026-09-20
 
 Everything here still works on the V30 it was written on; what changed is

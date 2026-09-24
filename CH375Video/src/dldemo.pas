@@ -1,6 +1,6 @@
 program dldemo;
 { DLDEMO -- moving graphics on a DisplayLink adapter, from real-mode DOS.
-  CH375Video, StevenC.  Public domain (the Unlicense).
+  CH375Video, StevenC & Claude.  Public domain (the Unlicense).
 
     DLDEMO [/P=260] [/M=n] [/D=name] [/S=secs] [/C]
 

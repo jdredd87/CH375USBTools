@@ -1,6 +1,6 @@
 program usbpoll;
 { USBPOLL -- poll an endpoint and show what comes back.
-  CH375USBTOOLS, StevenC.  Public domain (the Unlicense).
+  CH375USBTOOLS, StevenC & Claude.  Public domain (the Unlicense).
 
   Enumerates, configures the device, then sits on an IN endpoint printing
   every packet.  With no /E it finds the first interrupt IN endpoint by

@@ -1,5 +1,5 @@
 unit camfile;
-{ CAMFILE -- saving the camera's picture.  CH375Camera, StevenC.
+{ CAMFILE -- saving the camera's picture.  CH375Camera, StevenC & Claude.
   Public domain (the Unlicense).
 
   BMP because anything opens it, bottom-up as the format wants: 8-bit with

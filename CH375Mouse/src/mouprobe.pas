@@ -1,7 +1,7 @@
 program mouprobe;
 { MOUPROBE -- is there a serial mouse on the USB-to-serial adapter, and
   which protocol does it speak?
-  CH375Mouse, StevenC.  Public domain (the Unlicense).
+  CH375Mouse, StevenC & Claude.  Public domain (the Unlicense).
 
     MOUPROBE [/P=260] [/C=n] [/S=secs] [/W] [/M] [/X] [/Q]
 

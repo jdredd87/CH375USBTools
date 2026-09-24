@@ -1,6 +1,6 @@
 program chreg;
 { CHREG -- dump the CH375's internal register map.
-  CH375USBTOOLS, StevenC.  Public domain (the Unlicense).
+  CH375USBTOOLS, StevenC & Claude.  Public domain (the Unlicense).
 
   Command 0Ah is documented as GET_MAX_LUN and nothing else.  WCH's own DOS
   driver and CH375CHK.C both use it as a general "read one internal byte",

@@ -1,3 +1,4 @@
+; SHFTTST -- StevenC & Claude
 ; Runs the exact 186 test from Crynwr TAIL.ASM and reports it.
 ; Prints "is_186=1" if the CPU masks the shift count (driver uses REP INSW),
 ; "is_186=0" if not (driver uses the byte-at-a-time loop). rc = is_186.
@@ -17,5 +18,5 @@ done:	mov	al,bl
 	mov	al,bl
 	mov	ah,4ch
 	int	21h
-msg	db	'is_186='
+msg	db	'SHFTTST -- StevenC & Claude',13,10,'is_186='
 digit	db	'?',13,10,'$'

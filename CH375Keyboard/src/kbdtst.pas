@@ -1,6 +1,6 @@
 program kbdtst;
 { KBDTST -- check a loaded USBKBD.COM.
-  CH375Keyboard, StevenC.  Public domain (the Unlicense).
+  CH375Keyboard, StevenC & Claude.  Public domain (the Unlicense).
 
   Two jobs, and the first is the interesting one.
 

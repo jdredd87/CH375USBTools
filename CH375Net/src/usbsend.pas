@@ -1,6 +1,6 @@
 program usbsend;
 { USBSEND -- transmit through an AX88179 on a CH375, and prove it landed.
-  CH375Net, StevenC.  Public domain (the Unlicense).
+  CH375Net, StevenC & Claude.  Public domain (the Unlicense).
 
   Step three.  USBLINK proved the control path and USBRECV proved receive;
   this proves transmit, and it proves it the only way that counts.

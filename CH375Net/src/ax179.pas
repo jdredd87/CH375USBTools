@@ -1,6 +1,6 @@
 unit ax179;
 { AX179 -- the ASIX AX88179 as reached through a CH375 in host mode.
-  CH375Net, StevenC.  Public domain (the Unlicense).
+  CH375Net, StevenC & Claude.  Public domain (the Unlicense).
 
   Everything that knows what an AX88179 is lives here: the register map,
   the two vendor requests, the bring-up sequence, and the bulk read that

@@ -1,7 +1,7 @@
 program daiso;
 { DAISO -- try to push audio at a USB speaker's isochronous endpoint from a
   CH375, and measure exactly how it fails.
-  CH375Audio, StevenC.  Public domain (the Unlicense).
+  CH375Audio, StevenC & Claude.  Public domain (the Unlicense).
 
     DAISO [/P=260] [/N=n] [/GO] [/T]
 

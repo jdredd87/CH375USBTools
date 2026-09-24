@@ -3,7 +3,7 @@
 ;          unload and status.  Everything here is released when the driver
 ;          goes resident and none of it may be reached from the ISR.
 ;
-;   CH375Net, StevenC.  Public domain (the Unlicense).
+;   CH375Net, StevenC & Claude.  Public domain (the Unlicense).
 ;
 ; ONE PROGRAM.  This brings the adapter up itself -- PHY power, clocks, MAC,
 ; receive path, autonegotiation, link -- and then goes resident, so loading
@@ -4079,7 +4079,7 @@ die_now:
 ; MESSAGES
 ; ==========================================================================
 msg_prog:      db 'USBPKT $'
-msg_by:        db ' -- StevenC', 13, 10, '$'
+msg_by:        db ' -- StevenC & Claude', 13, 10, '$'
 
 msg_help:
         db 13, 10

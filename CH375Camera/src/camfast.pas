@@ -1,6 +1,6 @@
 unit camfast;
 { CAMFAST -- the per-pixel work of drawing a camera picture, in assembly.
-  CH375Camera, StevenC.  Public domain (the Unlicense).
+  CH375Camera, StevenC & Claude.  Public domain (the Unlicense).
 
   WHY.  CAMLIVE's first renderer was plain Pascal, and it spent 160 us a
   pixel -- 25 s to put one 320x240 picture on the screen in mode X, when

@@ -1,7 +1,7 @@
 program pmmem;
 { PMMEM -- what the card has mapped over each 16 KB of the first
   megabyte, LIVE, next to what it was configured to map.
-  PicoMEM tools, StevenC.  Public domain (the Unlicense).
+  PicoMEM tools, StevenC & Claude.  Public domain (the Unlicense).
 
     PMMEM [/1] [/W] [/P=2A0]
 
@@ -127,7 +127,7 @@ var
   Diff: Integer;
 begin
   Args;
-  WriteLn('PMMEM ', VER, ' -- the card''s memory map, live and configured');
+  WriteLn('PMMEM ', VER, ' -- the card''s memory map, live and configured', ' -- StevenC & Claude');
   Rc := 0;
 
   if not AskBios then PmBase := ForceBase;

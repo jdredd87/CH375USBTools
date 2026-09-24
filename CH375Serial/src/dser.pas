@@ -1,7 +1,7 @@
 unit dser;
 { dser -- USB-to-serial adapters over a CH375: the bring-up, and telling one
   chipset from another.
-  CH375Serial, StevenC.  Public domain (the Unlicense).
+  CH375Serial, StevenC & Claude.  Public domain (the Unlicense).
 
   WHY THIS ONE SHOULD ACTUALLY WORK
 

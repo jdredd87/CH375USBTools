@@ -1,6 +1,6 @@
 unit camgrab;
 { CAMGRAB -- getting whole pictures out of an IBM PC Camera that streams far
-  faster than a CH375 can listen.  CH375Camera, StevenC.  Public domain.
+  faster than a CH375 can listen.  CH375Camera, StevenC & Claude.  Public domain.
 
   WHAT THE CAMERA DOES WITH WHAT WE DO NOT READ.  Measured with CAMPROBE
   and CAMCAL, not taken from anywhere:

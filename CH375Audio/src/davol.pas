@@ -1,7 +1,7 @@
 program davol;
 { DAVOL -- read and set the volume and mute of a USB audio device over a
   CH375, using Audio Class control transfers.
-  CH375Audio, StevenC.  Public domain (the Unlicense).
+  CH375Audio, StevenC & Claude.  Public domain (the Unlicense).
 
     DAVOL [/P=260] [/U=n] [/C=n] [actions...] [/T]
 

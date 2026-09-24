@@ -1,7 +1,7 @@
 program dltest;
 { DLTEST -- draw test patterns on a DisplayLink adapter and ask the person
   watching whether each one appeared.
-  CH375Video, StevenC.  Public domain (the Unlicense).
+  CH375Video, StevenC & Claude.  Public domain (the Unlicense).
 
     DLTEST [/P=260] [/M=n] [/W=secs] [/A=secs] [/N] [/Q] [/B] [/X=n] [/Y=n]
 

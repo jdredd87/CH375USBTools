@@ -1,6 +1,6 @@
 unit dl;
 { DisplayLink over a CH375 -- the shared half.
-  CH375Video, StevenC.  Public domain (the Unlicense).
+  CH375Video, StevenC & Claude.  Public domain (the Unlicense).
 
   DLPROBE and DLTEST each grew their own copy of the bring-up and the
   command framing, and a third tool would have made three. This is that

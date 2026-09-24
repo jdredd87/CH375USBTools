@@ -1,6 +1,6 @@
 program usbscan;
 { USBSCAN -- find CH375 boards in the ISA I/O space.
-  CH375USBTOOLS, StevenC.  Public domain (the Unlicense).
+  CH375USBTOOLS, StevenC & Claude.  Public domain (the Unlicense).
 
   Answers "what address is the card at", which is the question every other
   tool in the suite assumes you already know.  CHECK_EXIST sends 55h and a

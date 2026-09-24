@@ -1,6 +1,6 @@
 program hidrep;
 { HIDREP -- fetch and decode a HID report descriptor over a CH375.
-  CH375USBTOOLS, StevenC.  Public domain (the Unlicense).
+  CH375USBTOOLS, StevenC & Claude.  Public domain (the Unlicense).
 
   USBINFO prints the report descriptor as bytes.  This one reads it as what
   it is -- a little stack program describing a bit layout -- and prints both

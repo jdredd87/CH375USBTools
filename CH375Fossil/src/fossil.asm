@@ -2,7 +2,7 @@
 ; FOSSIL.COM -- a FOSSIL driver (FSC-0015) for DOS, with pluggable
 ;               transports underneath the INT 14h API.
 ;
-;   Version 0.1.0                                                  StevenC
+;   Version 0.1.0                                                  StevenC & Claude
 ;   Public domain (the Unlicense).  Do anything you like with it.
 ;
 ;   FOSSIL [/L] [/R=n] [/B=n] [/S] [/U]
@@ -198,7 +198,7 @@ info_blk:
 info_end:
 
 ident_str:
-        db      'FOSSIL 0.1.0 (StevenC)', 0
+        db      'FOSSIL 0.1.0 (StevenC & Claude)', 0
 
 ; ==========================================================================
 ; INT 14h
@@ -2177,7 +2177,7 @@ sv14s:     dw   0
 sv08o:     dw   0
 sv08s:     dw   0
 
-m_banner:  db   'FOSSIL 0.1.0 -- StevenC', 13, 10, '$'
+m_banner:  db   'FOSSIL 0.1.0 -- StevenC & Claude', 13, 10, '$'
 m_ok:      db   'Installed.  ', '$'
 m_tloop:   db   'Transport: loopback.', 13, 10, '$'
 m_tch:     db   'Transport: CH375, adapter ', '$'

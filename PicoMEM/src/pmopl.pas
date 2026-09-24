@@ -1,6 +1,6 @@
 program pmopl;
 { PMOPL -- play something through the AdLib the PicoMEM emulates.
-  PicoMEM tools, StevenC.  Public domain (the Unlicense).
+  PicoMEM tools, StevenC & Claude.  Public domain (the Unlicense).
 
     PMOPL [/T] [/N=n] [/S]
 
@@ -158,7 +158,7 @@ var
   I: Integer;
 begin
   Args;
-  WriteLn('PMOPL ', VER, ' -- the AdLib a PicoMEM can be, at 388h');
+  WriteLn('PMOPL ', VER, ' -- the AdLib a PicoMEM can be, at 388h', ' -- StevenC & Claude');
 
   if AskBios and SharedOK then begin
     Write('the card says: AdLib ');

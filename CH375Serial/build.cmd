@@ -1,6 +1,6 @@
 @echo off
 REM  CH375Serial -- build the USB-to-serial tools into bin\
-REM  StevenC -- https://github.com/jdredd87/CH375USBTools
+REM  StevenC & Claude -- https://github.com/jdredd87/CH375USBTools
 REM  Public domain (the Unlicense); see LICENSE.
 REM
 REM    build.cmd            build only

@@ -1,5 +1,5 @@
 unit hidkey;
-{ HID usage -> PC scancode and ASCII  --  CH375Keyboard, StevenC
+{ HID usage -> PC scancode and ASCII  --  CH375Keyboard, StevenC & Claude
   Public domain (the Unlicense).
 
   A USB keyboard does not send scancodes.  It sends HID usage numbers from

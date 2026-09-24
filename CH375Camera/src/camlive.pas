@@ -1,6 +1,6 @@
 program camlive;
 { CAMLIVE -- the camera's picture on the DOS screen, over and over.
-  CH375Camera, StevenC.  Public domain (the Unlicense).
+  CH375Camera, StevenC & Claude.  Public domain (the Unlicense).
 
     CAMLIVE [/M=320] [/D=AUTO] [/F=n] [/G] [/H=2] [/S=300] [/N=n] [/A]
             [/O=CAM] [/B=32] [/P=260]

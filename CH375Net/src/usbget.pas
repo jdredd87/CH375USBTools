@@ -2,7 +2,7 @@ program UsbGet;
 
 { USBGET -- fetch a file over the USB adapter with mTCP nowhere in the path.
 
-  CH375Net, StevenC.  Public domain (the Unlicense).
+  CH375Net, StevenC & Claude.  Public domain (the Unlicense).
 
       USBGET <server-ip> <remote-name> <local-file> [/I=nn] [/C=path] [/V]
 
@@ -67,7 +67,7 @@ var
 
 procedure Usage;
 begin
-  WriteLn('USBGET ', VER, ' -- TFTP over the USB adapter, no mTCP involved');
+  WriteLn('USBGET ', VER, ' -- TFTP over the USB adapter, no mTCP involved', ' -- StevenC & Claude');
   WriteLn;
   WriteLn('  USBGET <server-ip> <remote> <local> [/I=nn] [/C=path] [/V]');
   WriteLn;

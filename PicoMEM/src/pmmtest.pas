@@ -1,6 +1,6 @@
 program pmmtest;
 { PMMTEST -- does a USB mouse on the card reach the PC at all?
-  PicoMEM tools, StevenC.  Public domain (the Unlicense).
+  PicoMEM tools, StevenC & Claude.  Public domain (the Unlicense).
 
     PMMTEST [/S=n] [/E-] [/L] [/P=2A0]
 
@@ -235,7 +235,7 @@ var
   Btns: Byte;
 begin
   Args;
-  WriteLn('PMMTEST ', VER, ' -- does a USB mouse on the card reach the PC?');
+  WriteLn('PMMTEST ', VER, ' -- does a USB mouse on the card reach the PC?', ' -- StevenC & Claude');
   Log('--- PMMTEST start');
   Rc := 0;
 

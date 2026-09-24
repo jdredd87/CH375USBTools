@@ -1,6 +1,6 @@
 program pmbench;
 { PMBENCH -- what does the PicoMEM cost to talk to?
-  PicoMEM tools, StevenC.  Public domain (the Unlicense).
+  PicoMEM tools, StevenC & Claude.  Public domain (the Unlicense).
 
     PMBENCH [/T=n] [/C-] [/P=2A0]
 
@@ -129,7 +129,7 @@ var
   CardRam, PcRam: LongInt;
 begin
   Args;
-  WriteLn('PMBENCH ', VER, ' -- what the card costs to read and to ask');
+  WriteLn('PMBENCH ', VER, ' -- what the card costs to read and to ask', ' -- StevenC & Claude');
 
   if not AskBios then PmBase := ForceBase;
   Bad := TestPort(PmBase, 100);

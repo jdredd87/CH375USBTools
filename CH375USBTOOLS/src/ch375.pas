@@ -1,5 +1,5 @@
 unit ch375;
-{ CH375 USB host-mode support  --  CH375USBTOOLS, StevenC
+{ CH375 USB host-mode support  --  CH375USBTOOLS, StevenC & Claude
   Public domain (the Unlicense).
 
   Everything the probe tools and the keyboard driver need in order to talk

@@ -4,6 +4,13 @@ CH375USBTOOLS -- StevenC and Claude -- https://github.com/jdredd87/CH375USBTools
 
 ## Unreleased
 
+**Rebuilt 2026-09-24 for the credit, and nothing else.** Every program's
+banner now ends `-- StevenC & Claude`, and every source header says the
+same. No code changed and no version was bumped, so this build shares its
+version numbers with the one before it -- the CRC tells them apart.
+Deployed to the V30 under `C:\CH375\` and CRC-checked there.
+
+
 
 * **Three NASM includes are now shared with the assembly drivers**:
   `src/ch375def.inc` (command codes, statuses, token PIDs),

@@ -1,7 +1,7 @@
 program dmprobe;
 { DMPROBE -- read a Davicom DM96xx USB Ethernet chip's registers and say what
   it actually is.
-  CH375Net, StevenC.  Public domain (the Unlicense).
+  CH375Net, StevenC & Claude.  Public domain (the Unlicense).
 
       DMPROBE [/P=260] [/I=n] [/V] [/T]
 

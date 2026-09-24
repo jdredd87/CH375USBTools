@@ -1,5 +1,5 @@
 program clkchk;
-{ DOS clock check  --  CH375Mouse, StevenC
+{ DOS clock check  --  CH375Mouse, StevenC & Claude
   Public domain (the Unlicense); see LICENSE.
 
   USBMOUSE divides the PIT by eight so it can poll the mouse at 145 Hz, and

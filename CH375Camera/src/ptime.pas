@@ -1,6 +1,6 @@
 unit ptime;
 { PTIME -- a microsecond clock from the 8253/8254 timer, for stamping
-  packets.  CH375Camera, StevenC.  Public domain (the Unlicense).
+  packets.  CH375Camera, StevenC & Claude.  Public domain (the Unlicense).
 
   The BIOS runs timer channel 0 in mode 3 (square wave), where the counter
   steps down by TWO and passes through its range twice per 55 ms period --

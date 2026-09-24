@@ -1,7 +1,7 @@
 program srlink;
 { SRLINK -- bring up an SR9700 / DM9601 USB Ethernet adapter over a CH375
   and see whether real frames arrive.
-  CH375Net, StevenC.  Public domain (the Unlicense).
+  CH375Net, StevenC & Claude.  Public domain (the Unlicense).
 
       SRLINK [/P=260] [/S=secs] [/M] [/X] [/V] [/T]
 

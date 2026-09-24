@@ -2,7 +2,7 @@
 ; I16SPY.COM -- count INT 16h calls by function and paint the totals on
 ;               screen, so an interactive program can be watched.
 ;
-;   CH375Keyboard, StevenC.  Public domain (the Unlicense).
+;   CH375Keyboard, StevenC & Claude.  Public domain (the Unlicense).
 ;
 ;   I16SPY        go resident and start counting
 ;   I16SPY /U     unhook and free
@@ -458,7 +458,7 @@ op_unl:  db 0
 op_stat: db 0
 op_help: db 0
 
-msg_prog:     db 'I16SPY 1.0.0 -- INT 16h call counter -- StevenC', 13, 10, '$'
+msg_prog:     db 'I16SPY 1.0.0 -- INT 16h call counter -- StevenC & Claude', 13, 10, '$'
 msg_help:     db 13, 10
         db 'Counts INT 16h calls by function and paints the totals on', 13, 10
         db 'row 0 of the screen, so an interactive program can be watched', 13, 10

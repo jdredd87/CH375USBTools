@@ -1,6 +1,6 @@
 unit daudio;
 { daudio -- the parts every CH375Audio tool needs, in one place.
-  CH375Audio, StevenC.  Public domain (the Unlicense).
+  CH375Audio, StevenC & Claude.  Public domain (the Unlicense).
 
   Three things live here and they are the three where a hand-copied second
   version would be dangerous rather than merely untidy:

@@ -1,6 +1,6 @@
 program pmcmdt;
 { PMCMDT -- how many status queries in a row does the card take?
-  PicoMEM tools, StevenC.  Public domain (the Unlicense).
+  PicoMEM tools, StevenC & Claude.  Public domain (the Unlicense).
 
     PMCMDT [/N=2] [/D=0] [/W]
 
@@ -80,7 +80,7 @@ begin
     WriteLn('no PicoMEM on the test port at ', Hex4(PmBase), 'h');
     Halt(1);
   end;
-  if Wr then WriteLn('PMCMDT ', VER, ' -- ', N, ' queries, ', D, ' ticks apart, a DOS write between');
+  if Wr then WriteLn('PMCMDT ', VER, ' -- ', N, ' queries, ', D, ' ticks apart, a DOS write between', ' -- StevenC & Claude');
 
   Done := 0;
   for I := 1 to N do begin
@@ -103,7 +103,7 @@ begin
   end;
 
   WriteLn('PMCMDT ', VER, ' -- ', N, ' queries, ', D, ' ticks apart',
-          '; card ready afterwards');
+          '; card ready afterwards -- StevenC & Claude');
   for I := 1 to N do
     WriteLn('  ', I:2, ': ', ResultName(R[I]), ', status ', St[I], ', ', Ms[I], ' ms');
   { 0 when every query answered.  This used to return the COUNT, so a

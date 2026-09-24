@@ -1,6 +1,6 @@
 program camcal;
 { CAMCAL -- record the camera's raw stream with the fast packet loop, for
-  working out what it is sending.  CH375Camera, StevenC.  Public domain.
+  working out what it is sending.  CH375Camera, StevenC & Claude.  Public domain.
 
     CAMCAL [/P=260] [/M=320] [/N=4000] [/O=CAL.DAT] [s,e,t,b]
 

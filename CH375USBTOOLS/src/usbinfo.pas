@@ -1,6 +1,6 @@
 program usbinfo;
 { USBINFO -- dump everything a USB device will tell you, over a CH375.
-  CH375USBTOOLS, StevenC.  Public domain (the Unlicense).
+  CH375USBTOOLS, StevenC & Claude.  Public domain (the Unlicense).
 
   Enumerates whatever is plugged into the card and prints every descriptor
   it can reach, decoded field by field and with the raw bytes alongside.

@@ -1,7 +1,7 @@
 program dlprobe;
 { DLPROBE -- identify a DisplayLink USB display adapter over a CH375, read
   its capability limits and the attached monitor's EDID.
-  CH375Video, StevenC.  Public domain (the Unlicense).
+  CH375Video, StevenC & Claude.  Public domain (the Unlicense).
 
   A USB display adapter has no class to stand on.  CDC-ECM worked out
   because Ethernet has one: the device describes itself, and a single

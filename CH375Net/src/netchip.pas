@@ -1,6 +1,6 @@
 unit netchip;
 { NETCHIP -- what kind of USB Ethernet adapter is this, and can we drive it?
-  CH375Net, StevenC.  Public domain (the Unlicense).
+  CH375Net, StevenC & Claude.  Public domain (the Unlicense).
 
   This project started as a driver for one adapter that happened to be on
   the desk. The goal is a CH375 network driver for USB-to-RJ45 adapters in

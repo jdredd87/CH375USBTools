@@ -1,7 +1,7 @@
 program pmdev;
 { PMDEV -- which of the card's emulated devices are really there,
   checked from the PC side rather than believed from the configuration.
-  PicoMEM tools, StevenC.  Public domain (the Unlicense).
+  PicoMEM tools, StevenC & Claude.  Public domain (the Unlicense).
 
     PMDEV [/A-] [/P=2A0]
 
@@ -255,7 +255,7 @@ var
   Bad: Word;
 begin
   Args;
-  WriteLn('PMDEV ', VER, ' -- the card''s devices, asked from the PC side');
+  WriteLn('PMDEV ', VER, ' -- the card''s devices, asked from the PC side', ' -- StevenC & Claude');
 
   if not AskBios then PmBase := ForceBase;
   Bad := TestPort(PmBase, 100);

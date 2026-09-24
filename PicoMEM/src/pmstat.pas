@@ -1,6 +1,6 @@
 program pmstat;
 { PMSTAT -- the answers a PicoMEM will actually give you.
-  PicoMEM tools, StevenC.  Public domain (the Unlicense).
+  PicoMEM tools, StevenC & Claude.  Public domain (the Unlicense).
 
     PMSTAT [/U-] [/D-] [/W] [/S=n] [/P=2A0]
 
@@ -214,7 +214,7 @@ var
   Changes: Word;
 begin
   Args;
-  WriteLn('PMSTAT ', VER, ' -- what the card answers when you ask it');
+  WriteLn('PMSTAT ', VER, ' -- what the card answers when you ask it', ' -- StevenC & Claude');
   Rc := 0;
 
   if not AskBios then PmBase := ForceBase;

@@ -2,7 +2,7 @@ program UsbVfy;
 
 { USBVFY -- verify the CH375 receive path with nothing else in it.
 
-  CH375Net, StevenC.  Public domain (the Unlicense).
+  CH375Net, StevenC & Claude.  Public domain (the Unlicense).
 
       USBVFY <sender-ip> [/P=nnnn] [/I=nn] [/C=path] [/S=secs] [/V]
 
@@ -119,7 +119,7 @@ var
 
 procedure Usage;
 begin
-  WriteLn('USBVFY ', VER, ' -- check the CH375 receive path, nothing above it');
+  WriteLn('USBVFY ', VER, ' -- check the CH375 receive path, nothing above it', ' -- StevenC & Claude');
   WriteLn;
   WriteLn('  USBVFY <sender-ip> [/P=nnnn] [/I=nn] [/C=path] [/S=secs] [/V]');
   WriteLn;

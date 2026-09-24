@@ -1,6 +1,6 @@
 program pmcfg;
 { PMCFG -- the whole configuration a PicoMEM is running.
-  PicoMEM tools, StevenC.  Public domain (the Unlicense).
+  PicoMEM tools, StevenC & Claude.  Public domain (the Unlicense).
 
     PMCFG [/Q] [/X] [/P=2A0]
 
@@ -274,7 +274,7 @@ var
   Bad: Word;
 begin
   Args;
-  WriteLn('PMCFG ', VER, ' -- the configuration this PicoMEM is running');
+  WriteLn('PMCFG ', VER, ' -- the configuration this PicoMEM is running', ' -- StevenC & Claude');
 
   if not AskBios then PmBase := ForceBase;
   Bad := TestPort(PmBase, 100);

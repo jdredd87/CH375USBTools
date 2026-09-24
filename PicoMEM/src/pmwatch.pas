@@ -1,6 +1,6 @@
 program pmwatch;
 { PMWATCH -- watch the WHOLE of the card's shared memory for changes.
-  PicoMEM tools, StevenC.  Public domain (the Unlicense).
+  PicoMEM tools, StevenC & Claude.  Public domain (the Unlicense).
 
     PMWATCH [/S=n] [/K] [/2] [/T] [/B-] [/P=2A0]
 
@@ -338,7 +338,7 @@ var
   Diff: LongInt;
 begin
   Args;
-  WriteLn('PMWATCH ', VER, ' -- every byte of the card''s shared memory');
+  WriteLn('PMWATCH ', VER, ' -- every byte of the card''s shared memory', ' -- StevenC & Claude');
   Rc := 0;
 
   if not AskBios then PmBase := ForceBase;

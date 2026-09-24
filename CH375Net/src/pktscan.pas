@@ -1,6 +1,6 @@
 program pktscan;
 { PKTSCAN -- which interrupt vectors hold a packet driver, and which are free.
-  CH375Net, StevenC.  Public domain (the Unlicense).
+  CH375Net, StevenC & Claude.  Public domain (the Unlicense).
 
   A Crynwr packet driver announces itself by putting the string "PKT DRVR"
   three bytes into its interrupt handler.  That is the whole discovery

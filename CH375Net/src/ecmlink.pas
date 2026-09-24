@@ -2,7 +2,7 @@ program EcmLink;
 
 { ECMLINK -- bring a CDC-ECM adapter up and prove it can actually talk.
 
-  CH375Net, StevenC.  Public domain (the Unlicense).
+  CH375Net, StevenC & Claude.  Public domain (the Unlicense).
 
       ECMLINK [@260] [/M=our-ip] [/T=target-ip]
 
@@ -190,7 +190,7 @@ end;
 
 begin
   ExitProc := @Quieten;
-  WriteLn('ECMLINK ', VER, ' -- CDC-ECM bring-up over a CH375 -- StevenC');
+  WriteLn('ECMLINK ', VER, ' -- CDC-ECM bring-up over a CH375 -- StevenC & Claude');
 
   Base := $260;
   HaveOur := False;

@@ -1,5 +1,5 @@
 program cambtn;
-{ CAMBTN -- find the IBM PC Camera's button.  CH375Camera, StevenC.
+{ CAMBTN -- find the IBM PC Camera's button.  CH375Camera, StevenC & Claude.
   Public domain (the Unlicense).
 
     CAMBTN [/P=260] [/S=30] [/F=100] [/L=135]

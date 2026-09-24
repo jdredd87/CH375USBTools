@@ -7,6 +7,13 @@ release is: bump it, add an entry here, `build.cmd`, commit, `git tag -a`.
 
 ## Unreleased
 
+**Rebuilt 2026-09-24 for the credit, and nothing else.** Every program's
+banner now ends `-- StevenC & Claude`, and every source header says the
+same. No code changed and no version was bumped, so this build shares its
+version numbers with the one before it -- the CRC tells them apart.
+Deployed to the V30 under `C:\CH375\` and CRC-checked there.
+
+
 No code change. A bug was found in 1.7.1 while building `CH375Combo`, and
 is recorded here rather than fixed, because fixing it changes what this
 driver keeps resident.

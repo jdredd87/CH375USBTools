@@ -1,6 +1,6 @@
 program pmdump;
 { PMDUMP -- the card's BIOS ROM and shared memory into a file.
-  PicoMEM tools, StevenC.  Public domain (the Unlicense).
+  PicoMEM tools, StevenC & Claude.  Public domain (the Unlicense).
 
     PMDUMP [file] [/K] [/R] [/P=2A0]
 
@@ -94,7 +94,7 @@ var
   Len: LongInt;
 begin
   Args;
-  WriteLn('PMDUMP ', VER, ' -- the card''s ROM and shared memory to a file');
+  WriteLn('PMDUMP ', VER, ' -- the card''s ROM and shared memory to a file', ' -- StevenC & Claude');
 
   if not AskBios then PmBase := ForceBase;
   Bad := TestPort(PmBase, 100);

@@ -1,6 +1,6 @@
 program pkttest;
 { PKTTEST -- prove a packet driver transmits and receives, on the vector you
-  name.  CH375Net, StevenC.  Public domain (the Unlicense).
+  name.  CH375Net, StevenC & Claude.  Public domain (the Unlicense).
 
   This is the test tool for USBPKT, and it exists because the alternative was
   borrowing somebody else's.  mTCP is an excellent stack and a poor probe:

@@ -1,6 +1,6 @@
 unit dmouse;
 { dmouse -- serial mouse protocols.
-  CH375Mouse, StevenC.  Public domain (the Unlicense).
+  CH375Mouse, StevenC & Claude.  Public domain (the Unlicense).
 
   NOTHING IN THIS UNIT KNOWS WHAT A USB ADAPTER IS, and that is the whole
   point of it existing separately.  It takes bytes that arrived from a

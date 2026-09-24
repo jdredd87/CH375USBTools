@@ -1,6 +1,6 @@
 program dlbench;
 { DLBENCH -- how fast can a DOS machine push pixels at a DisplayLink adapter?
-  CH375Video, StevenC.  Public domain (the Unlicense).
+  CH375Video, StevenC & Claude.  Public domain (the Unlicense).
 
     DLBENCH [/P=260] [/M=n] [/R=reps] [/O]
 

@@ -1,6 +1,6 @@
 program kbd16;
 { KBD16 -- which INT 16h functions does this BIOS actually implement?
-  CH375Keyboard, StevenC.  Public domain (the Unlicense).
+  CH375Keyboard, StevenC & Claude.  Public domain (the Unlicense).
 
   There are two generations of INT 16h. The original PC/XT BIOS has AH=00h
   (read), 01h (peek) and 02h (shift state). The AT-and-later "enhanced
