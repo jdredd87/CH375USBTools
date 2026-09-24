@@ -1,7 +1,8 @@
 version	equ	4
 ;History:76,1 0
 ;
-; 0.5-SC1..SC4, 2026-09-23: optimized by StevenC
+; 0.5-SC1..SC5, 2026-09-23: optimized by StevenC and Claude (Anthropic) --
+;   StevenC guiding, Claude doing the analysis, code and measurement
 ;   https://github.com/jdredd87/CH375USBTools  (PicoMEM/netdrv)
 ;   - NEC V20/V30 detected by AAD and given REP INSB/OUTSB (it fails the
 ;     186 shift test, so it used to copy one byte per IN/STOSB)
@@ -279,13 +280,13 @@ endif
 
 	public	copyright_msg
 if PicoMEM  eq 1
-copyright_msg	db	"PicoMEM (NE2000) Packet Driver 0.5-SC4, version "
+copyright_msg	db	"PicoMEM (NE2000) Packet Driver 0.5-SC5, version "
 else
 copyright_msg	db	"Packet driver for NE2000, version "
 endif
 		db	'0'+(majver / 10),'0'+(majver mod 10),".",'0'+version,".",'0'+dp8390_version,CR,LF
 if PicoMEM  eq 1
-		db	"Optimized by StevenC: REP INS/OUTS on NEC V20/V30, no NIC pauses",CR,LF
+		db	"Optimized by StevenC & Claude: REP INS/OUTS on NEC V20/V30, no NIC pauses",CR,LF
 endif
 		db	'$'
 

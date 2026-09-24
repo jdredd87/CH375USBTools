@@ -64,7 +64,8 @@ DOS machine over [DOSBridge](https://github.com/jdredd87/DOSBridge).
 **`netdrv\`** is different in kind: the card's own packet driver,
 `PM2000.COM`, rebuilt so an NEC V20/V30 copies packets with `REP INSB` /
 `REP OUTSB` -- 21-26% faster on the V30, measured. It is Crynwr's GPL
-source, not original work; its README says what changed and how it builds.
+source, not original work -- the changes are StevenC's and Claude's; its
+README says what changed and how it builds.
 
 ## The thing this project found
 

@@ -4,6 +4,10 @@
 packet data with `REP INSB`/`REP OUTSB` instead of one byte per loop. On the
 V30 that is 21-26% more network throughput, measured, with every byte checked.**
 
+**By StevenC and Claude (Anthropic)**, 2026-09-23: StevenC guiding and
+testing on his machines, Claude doing the analysis, the code, the builds
+and the measurements.
+
 This is the one directory in this project that is *not* original work and
 *not* public domain. `orig\` and `src\` are Crynwr packet driver source as
 distributed in [ISA-PicoMEM](https://github.com/FreddyVRetro/ISA-PicoMEM)
@@ -91,12 +95,13 @@ hitting its data port back to back without them. `PM_NoPause` in
 `PICOMEM.INC` now switches them off (0 restores the original timing); the
 binary is 344 bytes smaller.
 
-**SC4 is SC3 plus attribution, and is the build in `bin\`.** Its banner has a
-second line, `Optimized by StevenC: REP INS/OUTS on NEC V20/V30, no NIC
-pauses`, and `PM2000.ASM` has a header note listing the changes. The
-Crynwr and PicoMEM notices are all still there, as the GPL requires. No
-code changed, so SC3's numbers are SC4's; it has been the V30's boot
-driver since 2026-09-23 (CRC `29B31ADB`).
+**SC4 and SC5 are SC3 plus attribution, and SC5 is the build in `bin\`.**
+Its banner has a second line, `Optimized by StevenC & Claude: REP INS/OUTS
+on NEC V20/V30, no NIC pauses`, and `PM2000.ASM` has a header note listing
+the changes and who made them (SC4 named StevenC alone). The Crynwr and
+PicoMEM notices are all still there, as the GPL requires. No code changed,
+so SC3's numbers are SC5's; it has been the V30's boot driver since
+2026-09-23 (CRC `5C800029`).
 
 Measured on the V30, SC3 / SC2 / SC3 swapped live in the same half hour:
 

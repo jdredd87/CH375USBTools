@@ -1,6 +1,6 @@
 JWlink Version 2.0
 Portions Copyright (c) 1985-2002 Sybase, Inc. All Rights Reserved.
-Created on:       26/09/23 23:11:53
+Created on:       26/09/23 23:16:40
 Executable Image: bin\PM2000.COM
 creating a DOS .COM executable
 Warning! W1028: HW_INT_NO is an undefined reference
@@ -23,7 +23,7 @@ Group                           Address              Size
 Segment                Class          Group          Address         Size
 =======                =====          =====          =======         ====
 
-CODE                                  AUTO           0000:0000       0000218c
+CODE                                  AUTO           0000:0000       00002196
 
 
                         +----------------+
@@ -89,7 +89,7 @@ Module: build\PM2000.OBJ(PM2000.ASM)
 0000:0ba9*     MCAST_ALL_FLAG
 0000:0c00*     SOFT_RX_OVERRUNS
 0000:114d      END_FREE_MEM
-0000:129d      PARSE_ARGS
+0000:12a6      PARSE_ARGS
 0000:0bf8*     SOFT_TX_COLLISIONS
 0000:0c1e      AS_SEND_PKT
 0000:120d      COPYRIGHT_MSG
@@ -108,30 +108,30 @@ Module: build\PM2000.OBJ(PM2000.ASM)
 0000:0bfc*     SOFT_RX_ERRORS
 0000:0e25      RECV
 0000:0afb*     BLOCK_INPUT
-0000:12e9      PRINT_PARAMETERS
+0000:12f2      PRINT_PARAMETERS
 0000:0bf4*     SOFT_ERRORS
 0000:0bf4*     SOFT_TX_ERRORS
 0000:0c20      XMIT
 Module: build\TAIL.OBJ(TAIL.ASM)
-0000:137f*     BYTEOUT
-0000:13a0*     CRLF
-0000:18f2*     ERROR
-0000:18cc      ETOPEN_DIAGN
-0000:1d86*     GET_HEX
-0000:13be*     MALLOC
-0000:218b      BRANDING_MSG
-0000:1dee*     GET_DIGIT
-0000:12fc*     IS_EISA
-0000:1378*     WORDOUT
-0000:1371*     DWORDOUT
-0000:1e1f*     PRINT_ETHER_ADDR
-0000:13b1*     CHROUT
-0000:18fb      START_1
-0000:138e*     DIGOUT
-0000:132e*     DECOUT
-0000:1e14*     SKIP_BLANKS
-0000:12fd      PRINT_NUMBER
-0000:1d81      GET_NUMBER
+0000:1389*     BYTEOUT
+0000:13aa*     CRLF
+0000:18fc*     ERROR
+0000:18d6      ETOPEN_DIAGN
+0000:1d90*     GET_HEX
+0000:13c8*     MALLOC
+0000:2195      BRANDING_MSG
+0000:1df8*     GET_DIGIT
+0000:1306*     IS_EISA
+0000:1382*     WORDOUT
+0000:137b*     DWORDOUT
+0000:1e29*     PRINT_ETHER_ADDR
+0000:13bb*     CHROUT
+0000:1905      START_1
+0000:1398*     DIGOUT
+0000:1338*     DECOUT
+0000:1e1e*     SKIP_BLANKS
+0000:1307      PRINT_NUMBER
+0000:1d8b      GET_NUMBER
 
 
                         +-----------------------+
@@ -139,6 +139,6 @@ Module: build\TAIL.OBJ(TAIL.ASM)
                         +-----------------------+
 
 Stack size:  1000 (4096.)
-Memory size:  218c (8588.)
+Memory size:  2196 (8598.)
 Entry point address: 0000:0100
-Link time: 00:00.15
+Link time: 00:00.00
