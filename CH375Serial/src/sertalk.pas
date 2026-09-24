@@ -1,7 +1,7 @@
 program sertalk;
 { SERTALK -- open a USB-to-serial port, send a string, and print what
   comes back.
-  CH375Serial, StevenC.  Public domain (the Unlicense).
+  CH375Serial, StevenC & Claude.  Public domain (the Unlicense).
 
     SERTALK [/P=260] [/C=n] [/B=9600] [/S=secs] [/A=text] [/R] [/X] [/T]
 
@@ -266,7 +266,34 @@ var
   R   : Integer;
   T0  : LongInt;
   Done: Boolean;
+  W   : Word;
 begin
+  { FTDI has no status pipe: its modem status is a vendor request on
+    endpoint 0 (GET_MODEM_STATUS, 05h), and its low nibble is the same
+    16550 MSR layout the Keyspan sends, so the decoding below serves both. }
+  if Dev.Family = sfFtdi then
+  begin
+    W := 0;
+    R := CtrlIn($C0, $05, 0, 0, 2, Buf, SizeOf(Buf), W);
+    if (R <> INT_SUCCESS) or (W < 1) then
+    begin
+      WriteLn('modem status request refused');
+      Exit;
+    end;
+    Got := 14;
+    Done := False;
+  end
+  else
+    Got := 0;
+  if Got = 14 then
+  begin
+    if (Buf[0] and $10) <> 0 then Write('CTS ') else Write('cts ');
+    if (Buf[0] and $20) <> 0 then Write('DSR ') else Write('dsr ');
+    if (Buf[0] and $80) <> 0 then Write('DCD ') else Write('dcd ');
+    if (Buf[0] and $40) <> 0 then Write('RI ') else Write('ri ');
+    WriteLn(' (msr ', Hex2(Buf[0]), ')');
+    Exit;
+  end;
   Done := False;
   T0 := Ticks;
   while (not Done) and (Ticks - T0 < 36) do
@@ -733,6 +760,10 @@ begin
         WriteLn('control message refused');
         Continue;
       end;
+      { SerOpen raises both lines on every family but the Keyspan; FTDI
+        can set them one by one: value in bits 0-1, "change" mask in 8-9. }
+      if Dev.Family = sfFtdi then
+        CtrlNoData($40, $01, $0300 or (Word(Rc) shl 1) or Word(N), 0);
       DelayMs(300);
       ReadStatusOnce;
     end;
