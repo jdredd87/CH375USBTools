@@ -2,7 +2,8 @@
 
 **The PicoMEM's packet driver, `PM2000.COM`, rebuilt to move network data
 faster on an NEC V20/V30: up to 27% more throughput on the V30, measured on
-both a PicoMEM 2 and a PicoMEM 1, with every downloaded byte CRC-checked.**
+both a PicoMEM 2 and a PicoMEM 1, with every downloaded byte CRC-checked.
+On a 386 it is the same speed and fixes a buffer over-read.**
 
 **By StevenC and Claude (Anthropic)**, September 2026: StevenC guiding and
 testing on his machines, Claude doing the analysis, the code, the builds
@@ -48,15 +49,36 @@ network alone. Saving to disk gains less because the disk is the PicoMEM
 too: writing the file is the card's own SD time, which a packet driver
 cannot touch. The 1 MB disk row is the median of 6 runs against 12.
 
-**Every file came through intact.** 1, 5 and 10 MB downloads were CRC-32
-checked against the server's copy on both drivers and both cards, and the
-new driver has carried all of DOSBridge's traffic since -- jobs, results,
-deploys.
+**386SX/25 + PicoMEM 1** -- same speed, as expected
 
-**Not yet measured: a 386, 286 or 486.** Those CPUs take a different copy
-path (`REP INSW`) that got a bug fix, below. The new driver has loaded and
-carried traffic on a 386SX, but the card in it died before a timed,
-CRC-checked run could finish. That is the one test still to do.
+| | original | new | faster |
+|---|---|---|---|
+| 1 MB  | 3.4 s  | 3.4 s  | same |
+| 5 MB  | 15.4 s | 14.5 s | same (one run each) |
+| 10 MB | 28.5 s | 28.4 s | same |
+| 1 MB saved to disk  | 9.2 s  | 9.3 s  | same |
+| 5 MB saved to disk  | 43.9 s | 45.7 s | same (one run each) |
+| 10 MB saved to disk | 87.4 s | 86.4 s | same (one run each) |
+
+A 386 (and a 286 or 486) already used the fast `REP INSW` copy in the
+original driver, so there was no slow path to fix. For these CPUs the new
+driver is a **correctness fix at no cost**: it no longer reads past the end
+of each packet (below). The 1 MB and 10 MB rows are averages of 6-12 runs
+per driver, taken in turn, so any drift would show; the differences are
+well inside the run-to-run spread.
+
+The 386 also shows where the V30's time goes: **the same PicoMEM 1 moves
+10 MB in 28 s in the 386 and 65 s in the V30**, so on the V30 the limit is
+the CPU running mTCP, not the card or the WiFi. That is why the V30 gained
+from a faster copy loop and the 386 does not.
+
+**Every file came through intact.** 1, 5 and 10 MB downloads were CRC-32
+checked against the server's copy on both drivers, on both cards in the
+V30 and on the PicoMEM 1 in the 386, and the new driver has carried all of
+DOSBridge's traffic since -- jobs, results, deploys. Not tested: a 386
+with a PicoMEM 2 (same CPU path, different card), a 286 or 486 (no
+machines), and a genuine Intel 8086/8088, which runs the original byte loop
+unchanged.
 
 ## What changed
 
@@ -73,7 +95,7 @@ CRC-checked run could finish. That is the one test still to do.
 3. **A bug fix on the 286/386 path.** `read_186` read one word past the
    programmed count, and wrote one byte past the buffer, on every
    even-length read. Found reading the code; it had not been seen to break
-   anything.
+   anything. Verified on the 386SX: CRC-exact at 1, 5 and 10 MB.
 
 A genuine Intel 8086/8088 still runs the original byte loop unchanged.
 
