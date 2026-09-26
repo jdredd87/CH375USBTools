@@ -125,6 +125,48 @@ point from the other side: in the V30's room, with a CPU four to five times
 faster, it managed 1 MB in 24.5 s against the V30's 7.4 -- on a PicoMEM 1
 that died hours later, but the CPU was plainly not what limited it.
 
+## SC5 on a PicoMEM 1, 2026-09-25
+
+Everything above was measured with the V30's PicoMEM 2. On 2026-09-25 a
+PicoMEM 1 (StevenC's "1.11 board", BIOS 2025-11-02 by `PMINFO`) went into
+the V30, so the driver was run on the other card generation with the CPU
+held constant. Both drivers twice, swapped live, same `NETBENCH`, which now
+also writes 5 and 10 MB to disk and CRCs every saved file:
+
+| | shipped 0.5 | SC5 | |
+|---|---|---|---|
+| 1 MB to `NUL`  | 9.2 / 9.3 s | 7.8 / 7.9 s | **15%** |
+| 5 MB to `NUL`  | 41.0 / 42.1 s | 34.3 / 34.4 s | **19%** |
+| 10 MB to `NUL` | 76.2 / 78.7 s | 64.8 / 64.8 s | **18-20%** |
+| 1 MB to disk   | 15.6 / 19.7 s | 13.7 / 14.7 / 18.1 s | noisy |
+| 5 MB to disk   | 75.7 s | 68.4 / 69.5 s | 9% |
+| 10 MB to disk  | 141.7 s | 128.0 / 128.9 s | 10% |
+
+**Every disk run on both drivers was CRC-exact** against the server copy
+(`04D0E435`, `BDBF684D`, `2B11D791`). SC5 is the boot driver on that SD card
+now too, and the bridge's jobs have run over it since.
+
+The PicoMEM 1 is a little slower than the PicoMEM 2 through the same driver
+(10 MB in 64.8 s against 60.2 s), and SC5's lead is a little smaller on it
+-- consistent with the section above: what is left per packet is the card
+and mTCP, not the copy loop. **No further driver change is proposed.**
+Nothing measured points at the driver any more, and the disk rows are the
+card's SD writes, which a packet driver cannot reach.
+
+Two things this run found that are not the driver, and both cost time:
+
+* **A 10 MB download to disk "took twelve and a half minutes".** It took
+  128 s. The rest was DOSBridge's `HD` computing the file's CRC at 16 KB/s
+  afterwards, in the same job, so the job looked like a stalled transfer.
+  `HD`'s loop is assembly now, four times faster (`docs/tools.md` over
+  there). Time a transfer on its own, and CRC it separately.
+* **The first run's timings were all ~1.2 s -- 404s, counted as passes.**
+  The payload directory had gone from dosd's tree, and HTGET's exit code is
+  20-29 for a 2xx but 45 or more for a 404, so "20 or more" passed both.
+  `NETBENCH` now requires 20-29, and it uses no `SET` and no pipe: on a box
+  whose 256-byte environment is full, a `SET` fails, and a pipe fails
+  silently whenever `%TEMP%` is not a real directory.
+
 ## Not changed, and why
 
 * **`REP INSW` on the V30.** The card is 8-bit; whether a 16-bit `IN` to it
@@ -178,4 +220,23 @@ C:\PMNET\NEW\PM2000.COM 0x60
 
 If the new one fails, the machine drops off the network and a power cycle
 brings it back on the original, because nothing on disk changed. The same
-two lines with the paths swapped put the original back without a reboot.
+two lines with the paths swapped put the original back without a reboot --
+**provided the original has a name DOS will execute.** Once it has been
+kept aside as `PM2000.ORG`, `C:\DRIVERS\PM2000.ORG 0x60` runs nothing:
+COMMAND.COM only runs `.COM`, `.EXE` and `.BAT`, so on 2026-09-25 that swap
+unloaded the driver and loaded no replacement, and the box was off the
+network until it was rebooted. Keep a runnable copy -- the 386SX's SD card
+has `C:\PMNET\ORIG.COM` -- and swap back to that.
+
+## NETBENCH.BAT
+
+```
+CALL NETBENCH.BAT http://<server>:8080/f/netbench LABEL [DISK]
+```
+
+Appends one line per run to `C:\WORK\NB.LOG`: 1 MB twice, 5 MB and 10 MB
+to `NUL`, 1 MB to disk, and with `DISK` also 5 MB and 10 MB to disk. Every
+disk run is followed by its `crc32` line from `C:\TOOLS\HD.EXE`. A run that
+did not get a 2xx is logged `FAILED`. It needs `C:\WORK\ELAPSED.COM` from
+DOSBridge, and `CALL` -- run bare from a job, the job never gets control
+back.
