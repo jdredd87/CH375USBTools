@@ -72,13 +72,22 @@ The 386 also shows where the V30's time goes: **the same PicoMEM 1 moves
 the CPU running mTCP, not the card or the WiFi. That is why the V30 gained
 from a faster copy loop and the 386 does not.
 
+**Known issue: a 386 with a PicoMEM 2 -- use the original driver there.**
+On 2026-09-26 the new driver **locked up** a 386SX/25 fitted with a
+PicoMEM 2. A test build with the same changes *except* that the register
+pauses were kept (item 2 below) did not lock up, so the pauses are the
+suspect. But nothing networked in that machine with that card -- not the
+original driver either, although the card reported its WiFi joined -- so
+the combination was broken before the driver was involved, and the 386 was
+retired before it was pinned down. The same driver ran the same 386 with a
+PicoMEM 1 all day, CRC-exact.
+
 **Every file came through intact.** 1, 5 and 10 MB downloads were CRC-32
 checked against the server's copy on both drivers, on both cards in the
 V30 and on the PicoMEM 1 in the 386, and the new driver has carried all of
-DOSBridge's traffic since -- jobs, results, deploys. Not tested: a 386
-with a PicoMEM 2 (same CPU path, different card), a 286 or 486 (no
-machines), and a genuine Intel 8086/8088, which runs the original byte loop
-unchanged.
+DOSBridge's traffic since -- jobs, results, deploys. Not tested: a 286 or
+486 (no machines), and a genuine Intel 8086/8088, which runs the original
+byte loop unchanged.
 
 ## What changed
 
