@@ -138,9 +138,19 @@ also writes 5 and 10 MB to disk and CRCs every saved file:
 | 1 MB to `NUL`  | 9.2 / 9.3 s | 7.8 / 7.9 s | **15%** |
 | 5 MB to `NUL`  | 41.0 / 42.1 s | 34.3 / 34.4 s | **19%** |
 | 10 MB to `NUL` | 76.2 / 78.7 s | 64.8 / 64.8 s | **18-20%** |
-| 1 MB to disk   | 15.6 / 19.7 s | 13.7 / 14.7 / 18.1 s | noisy |
+| 1 MB to disk   | 15.6 s median of 6 | 14.4 s median of 12 | **~5%** |
 | 5 MB to disk   | 75.7 s | 68.4 / 69.5 s | 9% |
 | 10 MB to disk  | 141.7 s | 128.0 / 128.9 s | 10% |
+
+The 1 MB-to-disk row was noisy in the first runs (15.6 / 19.7 against
+13.7 / 14.7 / 18.1 s), so it was run again the same evening: six runs on
+SC5, six on the shipped driver, six on SC5 again, in one job with live
+swaps so any drift would show. Shipped: 15.3 16.2 14.5 15.9 16.8 14.7 s.
+SC5: 18.4 15.4 14.4 15.3 16.2 14.0, then 14.1 14.3 15.0 13.8 14.3 14.4 s.
+Median 15.6 against 14.4 s (7.7%), mean 15.6 against 15.0 s (3.9%), best
+14.5 against 13.8 s (4.8%) -- **about 5%**, real but inside the 1-2 s a
+single run wanders by. The shorter the write, the less the driver shows:
+most of a 1 MB disk run is the card writing its own SD card.
 
 **Every disk run on both drivers was CRC-exact** against the server copy
 (`04D0E435`, `BDBF684D`, `2B11D791`). SC5 is the boot driver on that SD card
