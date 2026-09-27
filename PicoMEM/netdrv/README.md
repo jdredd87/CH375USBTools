@@ -5,7 +5,10 @@ faster on an NEC V20/V30: up to 27% more throughput on the V30, measured on
 both a PicoMEM 2 and a PicoMEM 1, with every downloaded byte CRC-checked.
 On a 386 it is the same speed and fixes a buffer over-read.**
 
-> **Unofficial, modified driver.** This is **not** the official `PM2000.COM`
+> [!CAUTION]
+> ## UNOFFICIAL, MODIFIED DRIVER -- NOT THE OFFICIAL PM2000.COM
+>
+> This is **not** the official `PM2000.COM`
 > and is not made, endorsed, reviewed or supported by the PicoMEM's author or
 > the ISA-PicoMEM project. It is our own modification of the GPL source that
 > project distributes. The official driver ships with the PicoMEM; use that

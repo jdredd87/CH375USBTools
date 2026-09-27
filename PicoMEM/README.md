@@ -5,7 +5,10 @@ what it has mapped over your memory, which of its emulated devices are really
 answering, what a USB device on it can and cannot do, and what the whole thing
 costs to talk to.**
 
-> **Unofficial.** These are independent tools by StevenC and Claude
+> [!CAUTION]
+> ## UNOFFICIAL -- NOT PICOMEM SOFTWARE
+>
+> These are independent tools by StevenC and Claude
 > (Anthropic). They are **not** made, endorsed, reviewed or supported by the
 > PicoMEM's author or the ISA-PicoMEM project, and they are not official
 > PicoMEM software. Nothing here speaks for that project, and the protocol

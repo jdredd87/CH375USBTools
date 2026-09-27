@@ -33,11 +33,14 @@ mounted, what it has mapped over your memory, whether the device you plugged
 into it was even seen. [PicoMEM](PicoMEM/) is the answer to "is it the card
 or is it us?", which on this hardware is the first question worth asking.
 
-**The PicoMEM tools here are unofficial.** They are not made, endorsed or
-supported by the PicoMEM's author or the ISA-PicoMEM project -- including
-the faster `PM2000.COM` in `PicoMEM/netdrv`, which is our modification of
-the driver that project ships, not a release of it. Report problems with
-them here, not to the PicoMEM project.
+> [!CAUTION]
+> ## UNOFFICIAL -- THE PICOMEM TOOLS HERE ARE NOT PICOMEM SOFTWARE
+>
+> They are not made, endorsed or supported by the PicoMEM's author or the
+> ISA-PicoMEM project -- including the faster `PM2000.COM` in
+> `PicoMEM/netdrv`, which is our modification of the driver that project
+> ships, not a release of it. **Report problems with them here, not to the
+> PicoMEM project.**
 
 It is also why those tools are so careful. **The card is the boot disk**, and
 every sector DOS reads is a command on the same I/O port the tools use, so
