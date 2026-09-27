@@ -5,6 +5,14 @@ what it has mapped over your memory, which of its emulated devices are really
 answering, what a USB device on it can and cannot do, and what the whole thing
 costs to talk to.**
 
+> **Unofficial.** These are independent tools by StevenC and Claude
+> (Anthropic). They are **not** made, endorsed, reviewed or supported by the
+> PicoMEM's author or the ISA-PicoMEM project, and they are not official
+> PicoMEM software. Nothing here speaks for that project, and the protocol
+> details below are our reading of its public sources, not a specification.
+> **Please do not report problems with these tools to the PicoMEM project** --
+> open an issue here instead.
+
 The [PicoMEM](https://github.com/FreddyVRetro/ISA-PicoMEM) is an 8-bit ISA
 card with a Raspberry Pi Pico on it that emulates memory, disks, sound cards
 and -- on a Pico W -- an NE2000 over WiFi. The **PicoMEM 1** is the original
