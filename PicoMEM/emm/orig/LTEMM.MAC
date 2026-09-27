@@ -1,0 +1,61 @@
+;
+;       LTEMM.MAC -- 32-bit helper macros used by PMEMM.ASM (function 57h).
+;
+;       The ISA-PicoMEM repository does not include this file.  It was
+;       reconstructed by StevenC & Claude from the shipped PMEMM.EXE:
+;       each macro below is exactly what that binary contains at every
+;       place the source uses it.  DX:AX is the 32-bit accumulator.
+;
+FarPtrAddress   MACRO   segm,offs       ;DX:AX = segm*16 + offs
+                mov     dx,segm
+                mov     ax,offs
+                mov     bx,dx
+                mov     cl,4
+                shl     bx,cl
+                and     dx,0F000h
+                rol     dx,cl
+                add     ax,bx
+                adc     dx,0
+                ENDM
+
+Save32          MACRO   hi,lo           ;hi:lo = DX:AX
+                mov     hi,dx
+                mov     lo,ax
+                ENDM
+
+FLoad32         MACRO   lo              ;DX:AX = dword at lo
+                les     ax,dword ptr lo
+                mov     dx,es
+                ENDM
+
+Add32           MACRO   hi,lo           ;DX:AX += hi:lo
+                add     ax,lo
+                adc     dx,hi
+                ENDM
+
+Sub32           MACRO   hi,lo           ;DX:AX -= hi:lo
+                sub     ax,lo
+                sbb     dx,hi
+                ENDM
+
+Shl32           MACRO   n               ;DX:AX <<= n
+                REPT    n
+                shl     ax,1
+                rcl     dx,1
+                ENDM
+                ENDM
+
+Shr32           MACRO   n               ;DX:AX >>= n
+                REPT    n
+                shr     dx,1
+                rcr     ax,1
+                ENDM
+                ENDM
+
+Exbyte          MACRO                   ;swap one byte DS:SI <-> ES:DI
+                mov     al,[si]
+                xchg    es:[di],al
+                mov     [si],al
+                inc     si
+                inc     di
+                ENDM

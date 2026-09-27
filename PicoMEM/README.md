@@ -78,6 +78,13 @@ DOS machine over [DOSBridge](https://github.com/jdredd87/DOSBridge).
 source, not original work -- the changes are StevenC's and Claude's; its
 README says what changed and how it builds.
 
+**`emm\`** is the same kind of thing for memory: the card's EMS driver,
+`PMEMM`, rebuilt with a fast path for INT 67h function 44h, word-wide
+moves, and five bugs fixed -- one of which corrupted every EMS move that
+crossed a 16 KB page -- and `UMBSC`, the `USE!UMBS` upper memory manager
+rebuilt to use no conventional memory. Both are unofficial, and both load
+from `CONFIG.SYS`: read its README first.
+
 ## The thing this project found
 
 **Where the card writes its text answers depends on the firmware, and
