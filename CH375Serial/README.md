@@ -42,6 +42,18 @@ this bus — see the rule in the collection's [top-level README](../README.md).
 | CP210x | vendor requests | written, no hardware yet |
 | CH340/CH341 | — | recognised, not driven |
 
+**PL2303 clones under other vendor IDs are matched by VID *and* PID.**
+Added 2026-09-26 by StevenC and Claude: a **Y.C. Cable `05AD:0FBA`**, whose
+strings read "Prolific Technology Inc. / USB-Serial Controller" and whose
+`bcdDevice` is 3.00 (HX). The Linux pl2303 driver binds the same ID, and the
+endpoint layout matches exactly -- interrupt IN of 10 bytes, bulk OUT and
+IN of 64. Before this `SERPROBE` called it "unknown" and nothing would open
+it. Verified on the Courier: `ATI3` answered in full with `OK`, and a
+58-character string echoed byte-exact at 9600 (36 packets) and 38400 (4).
+The modem then fell into a state where it echoed every byte but executed
+nothing -- not even `ATZ` -- until power-cycled; that was not pursued, and
+the adapter's own data path was exact throughout.
+
 "Written" and "verified" are kept apart on purpose. `SerSupported` says
 which the unit will *attempt*, and a family it merely recognises returns
 False from `SerOpen` rather than pretending — because a port that was never

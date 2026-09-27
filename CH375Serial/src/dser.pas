@@ -71,6 +71,12 @@ const
   VID_WCH        = $1A86;
   VID_KEYSPAN    = $06CD;
 
+  { PL2303 clones sold under another vendor's ID.  The Linux pl2303 driver
+    binds these as Prolific parts, and the endpoint layout proves it: an
+    interrupt IN of 10 bytes, then a bulk OUT and a bulk IN of 64.  Matched
+    on VID AND PID -- the vendor makes other things. }
+  VID_YCCABLE    = $05AD;  PID_YCCABLE = $0FBA;   { Y.C. Cable RS-232 bridge }
+
 type
   TSerFamily = (sfUnknown, sfCdcAcm, sfFtdi, sfPl2303, sfCh34x, sfCp210x,
                 sfKeyspan);
@@ -324,7 +330,9 @@ begin
       VID_CP210X:   D.Family := sfCp210x;
       VID_KEYSPAN:  D.Family := sfKeyspan;
     else
-      if SawCdc then D.Family := sfCdcAcm;
+      if (VID = VID_YCCABLE) and (PID = PID_YCCABLE) then
+        D.Family := sfPl2303
+      else if SawCdc then D.Family := sfCdcAcm;
     end;
 
   { FTDI puts two status bytes at the head of EVERY bulk IN packet. It is
