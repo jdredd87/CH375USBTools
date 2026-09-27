@@ -32,10 +32,9 @@ and the measurements.
 |---|---|
 | `orig\` | `PMEMM.ASM` and `PMEMM.INC` as the ISA-PicoMEM tree has them, with the few edits that make them build (below), `LTEMM.MAC` reconstructed, and the shipped `PMEMM.EXE`. `build.cmd orig` reproduces that binary's load image **byte for byte** |
 | `src\` | `PMEMM` r01-SC1. Every change is marked `SC:` in the source |
-| `umb\UMBSC.ASM` | the UMB manager, NASM |
+| (UMBSC) | moved to DOS Bridge, `extras/umbsc` -- see below |
 | `test\emstest.pas` | `EMSTEST.EXE`: a behaviour test of every EMS function, then a benchmark. Runs on the DOS machine against whatever driver is loaded |
 | `test\emuems.py` | the same behaviour test, run against a driver **binary** in an 8086 emulator on Windows -- see below |
-| `test\emuumb.py` | a UMB manager put through four emulated boots |
 
 ## PMEMM r01-SC1
 
@@ -184,43 +183,17 @@ tested.
 
 ## UMBSC 2.2-SC1
 
-`USE!UMBS.SYS` 2.2 -- the file on the V30 is Krister Nordvall's NASM
-rewrite of Marco van Zwetselaar's 1991 driver, still named `ZwetsUMB` --
-keeps its XMS entry point, its INT 2Fh hook and its list of free blocks in
-the driver's own memory. DOS loads it before there is any upper memory, so
-that is **224 bytes of conventional memory for the whole session**, for
-code that runs a dozen times during boot.
+**UMBSC has moved to DOS Bridge** (2026-09-27): it is a DOS tool for any PC
+with upper memory and no 386 memory manager, not a PicoMEM one, so its
+source, its emulator test and its write-up now live in the DOS Bridge
+repository as an optional extra, `extras/umbsc`, and ship in the DOS Bridge
+kit -- https://github.com/jdredd87/DOSBridge.  That is its only copy; this
+section used to hold it.
 
-`UMBSC` copies those 125 bytes to the end of the last upper memory block
-(8 paragraphs), hands DOS the rest, and then has DOS **discard the driver
-entirely**: it clears bit 15 of its attribute word and reports zero units,
-which DOS treats as a block device that found no drives. That path is in
-Microsoft's published MS-DOS source (`SYSCONF.ASM`, `ISBLOCK` ->
-`Erase_Dev_do`) and prints nothing.
-
-`emuumb.py` boots the old and new drivers four ways and asks for upper
-memory the way DOS does:
-
-| | `USE!UMBS` 2.2 | `UMBSC` |
-|---|---|---|
-| conventional memory kept | **208 + 16** bytes | **0** |
-| blocks DOS is given | C800h 32 KB, D800h 32 KB | C800h 32 KB, D800h 32 KB - 128 bytes |
-| order | C800h first | C800h first |
-| XMS 00h/08h/11h, 4300h, other INT 2Fh | as below | identical |
-| an XMS driver without UMBs loaded first | chains to it | chains to it |
-| an XMS driver with UMBs loaded first | not installed, INT 2Fh untouched | the same |
-| a bad command line | not installed | the same |
-
-Same command line as `USE!UMBS`:
-
-```
-DOS=UMB
-DEVICE=C:\DRIVERS\UMBSC.SYS C800-D000 D800-E000
-```
-
-The one thing the emulator could not show was whether MS-DOS 6.22 still
-links the UMBs through a driver it has just discarded. **It does** -- see
-below.
+In short: `USE!UMBS.SYS` rebuilt so DOS discards the driver and its 125
+resident bytes live in upper memory -- 224 bytes of conventional memory back,
+the same answers, the same blocks in the same order.  The V30's install
+below still uses it.
 
 ## Status
 

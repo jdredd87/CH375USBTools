@@ -81,9 +81,10 @@ README says what changed and how it builds.
 **`emm\`** is the same kind of thing for memory: the card's EMS driver,
 `PMEMM`, rebuilt with a fast path for INT 67h function 44h, word-wide
 moves, and five bugs fixed -- one of which corrupted every EMS move that
-crossed a 16 KB page -- and `UMBSC`, the `USE!UMBS` upper memory manager
-rebuilt to use no conventional memory. Both are unofficial, and both load
-from `CONFIG.SYS`: read its README first.
+crossed a 16 KB page. It is unofficial and loads from `CONFIG.SYS`: read
+its README first. (`UMBSC`, the `USE!UMBS` upper memory manager rebuilt to
+use no conventional memory, started here too and now lives in DOS Bridge as
+an optional extra, `extras/umbsc` -- it is not PicoMEM-specific.)
 
 ## The thing this project found
 
