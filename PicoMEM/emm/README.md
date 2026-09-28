@@ -1,9 +1,9 @@
 # emm -- the PicoMEM's EMS driver and UMB manager, faster, fixed and smaller
 
-**`PMEMM` r01-SC1**: the PicoMEM's EMS driver rebuilt with a fast path for
+**`PMEMM` r01-SC2**: the PicoMEM's EMS driver rebuilt with a fast path for
 the call EMS programs make in their inner loops, word-wide memory moves,
-and **five bugs fixed** -- the worst of them corrupting every EMS move
-that crossed a 16 KB page. **`UMBSC`**: the `USE!UMBS` upper memory
+and **seven bugs fixed** -- the worst of them corrupting every EMS move
+that crossed a 16 KB page -- and its move made to let interrupts in. **`UMBSC`**: the `USE!UMBS` upper memory
 manager, rebuilt to take **no conventional memory at all** (it was 224
 bytes).
 
@@ -11,12 +11,12 @@ bytes).
 > ## UNOFFICIAL, MODIFIED DRIVERS -- NOT THE PICOMEM'S OWN
 >
 > Neither driver here is made, endorsed, reviewed or supported by the
-> PicoMEM's author or the ISA-PicoMEM project. `PMEMM` r01-SC1 is our
+> PicoMEM's author or the ISA-PicoMEM project. `PMEMM` r01-SC2 is our
 > modification of the source that project distributes; `UMBSC` is our own
 > rewrite of a public-domain driver. The PicoMEM's own `PMEMM.EXE` and
 > `USE!UMBS.SYS` are what to use if in doubt, and **please do not report
 > problems with these builds to the PicoMEM project** -- open an issue here
-> instead. The banners read `r01-SC1` / `Optimized by StevenC & Claude` and
+> instead. The banners read `r01-SC2` / `Optimized by StevenC & Claude` and
 > `UMBSC 2.2-SC1` so they cannot be confused with the originals.
 >
 > **Both load from `CONFIG.SYS`, and the PicoMEM is the boot disk.** Have a
@@ -31,7 +31,7 @@ and the measurements.
 | | |
 |---|---|
 | `orig\` | `PMEMM.ASM` and `PMEMM.INC` as the ISA-PicoMEM tree has them, with the few edits that make them build (below), `LTEMM.MAC` reconstructed, and the shipped `PMEMM.EXE`. `build.cmd orig` reproduces that binary's load image **byte for byte** |
-| `src\` | `PMEMM` r01-SC1. Every change is marked `SC:` in the source |
+| `src\` | `PMEMM` r01-SC2. Every change is marked `SC:` in the source |
 | (UMBSC) | moved to DOS Bridge, `extras/umbsc` -- see below |
 | `test\emstest.pas` | `EMSTEST.EXE`: a behaviour test of every EMS function, then a benchmark. Runs on the DOS machine against whatever driver is loaded |
 | `test\emuems.py` | the same behaviour test, run against a driver **binary** in an 8086 emulator on Windows -- see below |
@@ -189,7 +189,77 @@ the EXE, which has no relocations and its device header at offset 0.
 `PMEMM` with `DEVLOAD` hung the V30 twice -- the original as well as
 ours, as `.EXE` and as flat `.SYS` -- and each needed a power cycle. Why
 was not chased: booting it from `CONFIG.SYS` works, and is how it was
-tested.
+tested.  **A lead, 2026-09-28**: on the V30 `DEVLOAD` 3.25 refused
+*every* driver before calling it -- "free drive letter not found, increase
+LASTDRIVE" -- and hung once more with `/V`, loading DOS Bridge's XMSSC,
+whose init had never run.  So the hang may be `DEVLOAD`'s and not the
+driver's.  With `LASTDRIVE=G` in `CONFIG.SYS` (there since that evening)
+it calls drivers again -- and **`DEVLOAD /V`, which DOS Bridge's `dosdrv`
+used, hangs the V30 by itself**, with a driver that does nothing.  So both
+`PMEMM` hangs under `DEVLOAD` were very likely `/V`'s.  `PMEMM` under plain
+`DEVLOAD` has not been retried.
+
+### r01-SC2: two more fixes, 2026-09-28
+
+Both found while building DOS Bridge's `extras/xmssc` (an XMS driver on top
+of this one), both in the original `PMEMM.EXE` as well.  The banner reads
+`r01-SC2`.
+
+1. **57h held interrupts off for the whole move.**  The INT 67h entry
+   (`int67_full`) clears the interrupt flag and `func24`, the move, never
+   set it again -- every other function starts with `STI`; this one had
+   none.  So a long move delayed every interrupt by its whole length -- 23
+   ms for 16 KB between conventional memory and EMS, ~35 ms EMS to EMS, ~100
+   ms for a 16 KB exchange -- and past ~27 ms **the V30 loses BIOS clock
+   ticks** (`C:\dosbridgeDEV\docs\hardware.md`).
+   **Now** a move goes in pieces of at most 4 KB, and between pieces
+   interrupts are let in -- with the caller's page map put back in the two
+   windows the move borrows first, so an interrupt routine sees the frame
+   as its program left it.  `f24_data`, where the move keeps that map, is
+   one variable for everyone, and that is why this is safe: a 57h made by
+   an interrupt routine in the window saves the same map there, so ours is
+   still right when it returns.  Interrupts now wait ~9 ms at most.
+2. **A window nobody had mapped came back mapped to page 0.**  The card
+   disables a window with FFh (`DIS_EMS`), but `ramchk` started every
+   window's record at logical page 0 -- and so did `func29` (5Ch, prepare
+   for warm boot), which therefore *mapped* page 0 into every window
+   instead of disabling them.  A saved and restored page map (4Eh, 47h/48h,
+   the end of every 57h) then wrote that 0 to the card.  Found on the V30
+   straight after a boot: the first move after power-on changed a window
+   from FFh to 00h.  Both now record `DIS_EMS`; an original left over from
+   the Lo-tech source, which disabled with 0.
+
+**Measured on the V30** after the change (`EMSTEST`, straight after a boot):
+the behaviour transcript is **`90046ADC`, the same as r01-SC1's**, 0 data
+checks failed.  The per-call functions are unchanged (44h 16,307 a second).
+The 57h rows, and why two of them fell:
+
+| 57h, 16 KB | r01-SC1 | **r01-SC2** | |
+|---|---|---|---|
+| conventional <-> EMS | 704 KB/s | **672** | 4 pieces now: ~4.5% for bounded interrupts |
+| EMS to EMS | 640 | **416** | the SC1 figure was **lost ticks, not speed**: two windows run at ~445 KB/s timed by the PIT |
+| exchange | 576 | **160** | the same: the exchange loop is a word at a time, and SC1 held interrupts off ~100 ms per call |
+
+**The `EMS->EMS` and exchange figures in the tables above are therefore
+inflated**: they were timed by the BIOS tick on a driver that lost ticks.
+The conventional <-> EMS moves (23 ms) were not.
+
+`test\emuems.py` gained two checks for the second fix -- a never-mapped
+window restored as disabled, and 5Ch leaving every window disabled: r01-SC2
+passes them, r01-SC1 fails both, and the original now fails 15 data checks
+(the 13 above and these two).  Its transcript is otherwise the same as
+r01-SC1's line for line.
+
+### Known issue
+
+**When it cannot install, it stays loaded**: with no EMS to be had (on a
+PicoMEM 1 whose configuration has EMS off, seen on a 486 on 2026-09-28) it
+prints "Installation failed - No EMS available", keeps 2,192 bytes and its
+`EMMXXXX0` device, and leaves INT 67h hooked -- every function then answers
+80h (EMS software malfunction), and nothing touches a port.  That is the
+original's design, and harmless, but a program that finds `EMMXXXX0` will
+think there is EMS until it asks.  Discarding the driver instead would need
+the INT 67h vector it replaced saved first (`emminit` does not).
 
 ## UMBSC 2.2-SC1
 
@@ -207,7 +277,14 @@ below still uses it.
 
 ## Status
 
-**Both are installed on the V30, 2026-09-27** -- `PMEMMSC.SYS` (CRC
+**Now, 2026-09-28: r01-SC2** -- `C:\DRIVERS\PMEMMSC.SYS`, CRC
+`BAC75327`, 9,151 bytes, loaded low (7,040 bytes resident); r01-SC1 is kept
+beside it as `PMEMMSC.S1`.  The V30's whole `CONFIG.SYS` is DOS Bridge's
+`projects\dostune` variant `xms2`, which also loads DOS Bridge's XMSSC on
+top of this driver.  EMSTEST straight after a boot: transcript `90046ADC`,
+0 data checks failed.
+
+**Both were installed on the V30, 2026-09-27** -- `PMEMMSC.SYS` (CRC
 `6052BD1C`) and `UMBSC.SYS` (`C80F0E0C`) in `C:\DRIVERS`, from this
 `CONFIG.SYS`:
 

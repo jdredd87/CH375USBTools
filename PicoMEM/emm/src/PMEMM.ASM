@@ -2266,7 +2266,7 @@ f2434:                                          ; EMS...
 f2436:
                 mov     ax,[bp].region_low
                 or      ax,[bp].region_high
-                jnz     f2438
+                jnz     f2436w                  ;SC: more to move
                 test    [bp].direct_move,4      ;
                 jz      f2439
                 cld                             ;SC: may be a backward move
@@ -2286,6 +2286,34 @@ f2439:
 f2441:
                 jmp     err92
 
+; SC: between pieces, let interrupts in.  The move runs with them off (the
+; INT 67h entry clears IF), and the original let none in until the end: a
+; 32 KB move held them off for ~46 ms on the V30, which loses BIOS clock
+; ticks there past ~27 ms.  Pieces are capped at 4 KB (below), and before
+; each window the caller's page map goes back into the two windows the move
+; borrows, so an interrupt routine sees the frame as its program left it --
+; and a 57h made by one saves that same map in f24_data, so ours is still
+; right when it returns.  Every piece maps its own pages again anyway.
+f2436w:
+                cmp     [bp].zero_low,0         ;SC: nothing copied yet
+                je      f2438
+                test    [bp].direct_move,4      ;SC: no EMS in it: no map
+                jz      f2436s
+                pushf                           ;SC: DF: a move may go down
+                cld
+                mov     cx,SIZE phys_page_struct
+                mov     si,offset f24_data
+                mov     di,offset map_table
+                mov     ax,cs
+                mov     ds,ax
+                mov     es,ax
+                rep     movsw
+                call    set_pages_map
+                popf
+f2436s:
+                sti                             ;SC: pending interrupts in
+                nop
+                cli
 
 f2438:
                 cmp     [bp].source_type1,1
@@ -2406,6 +2434,10 @@ f2452:
 
 
 f2453:
+                cmp     cx,1000h                ;SC: at most 4 KB a piece, so
+                jbe     f2453c                  ;interrupts wait at most ~9 ms
+                mov     cx,1000h
+f2453c:
                 mov     [bp].zero_low,cx
                 mov     ax,[bp].source_seg
                 mov     ds,ax
@@ -2705,7 +2737,8 @@ func29:
 		MOV	CX,PHYS_PAGES
 f291:
 		MOV	[DI].emm_handle2,UNMAP
-		MOV	[DI].log_page_data,0
+		MOV	[DI].log_page_data,DIS_EMS ;SC: was 0, which MAPS page 0 on
+					;a card that disables with FFh
 		ADD	DI,SIZE phys_page_struct
 		loop	f291
 		call	set_pages_map
@@ -3225,7 +3258,9 @@ ramchk		PROC	NEAR
 		MOV	SI,page_frame_seg
 Init_Physical_pages_var:
 		MOV	[DI].phys_page_port,BX
-		MOV	[DI].log_page_data,0
+		MOV	[DI].log_page_data,DIS_EMS ;SC: was 0: a saved and restored
+					;map then MAPPED page 0 into a window
+					;nobody had mapped (FFh, disabled)
 		MOV	[DI].phys_seg_addr,SI
 		ADD	DI,SIZE phys_page_struct
 		ADD	SI,0400H
@@ -3688,7 +3723,7 @@ info:
 ;	EMM driver initial routine work data area
 ;--------------------------------------------------------------------
 start_msg   DB	'PMEMM: Lo-tech EMM Driver for PicoMEM '
-msg_ver     DB  'r01-SC1'
+msg_ver     DB  'r01-SC2'
 		    DB	CR,LF,'Optimized by StevenC & Claude',CR,LF,'$'
 detected_msg DB 'PicoMEM Detected',CR,LF,'$'
 notdet_msg   DB 'Error : PicoMEM Not Detected',CR,LF,'$'
@@ -3706,7 +3741,7 @@ pagemsg		DB	'0000 Pages testing, Esc bypass test',CR,'$'
 tstpage		DB	'0000',CR,'$'
 info_msg    DB  CR,LF
 			DB  'Expanded Memory Manager for the PicoMEM Board.',CR,LF
-			DB  'r01-SC1: optimized by StevenC & Claude (Anthropic).',CR,LF
+			DB  'r01-SC2: optimized by StevenC & Claude (Anthropic).',CR,LF
 			DB	'Based on original works Copyright (c) 1988, Alex Tsourikov.',CR,LF
 ;			DB	'All rights reserved.',CR,LF
 			DB  CR,LF

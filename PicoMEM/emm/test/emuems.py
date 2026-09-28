@@ -218,7 +218,7 @@ class Test:
         return self.ems(0x4400 | phys, bx=log, dx=h)['ax'] >> 8
 
     def run(self):
-        self.basics(); self.maps(); self.map50(); self.mapsave(); self.realloc()
+        self.fresh(); self.basics(); self.maps(); self.map50(); self.mapsave(); self.realloc()
         self.moves(); self.names(); self.jumpcall(); self.free()
         crc = zlib.crc32('\n'.join(self.lines).encode())
         self.T('--- %d data checks failed, transcript crc %08X ---' % (self.fails, crc))
@@ -584,6 +584,21 @@ class Test:
         self.T('55/00 map+jump     AH=%02X %d' % (uc.reg_read(UC_X86_REG_AX) >> 8, ok))
         self.must(ok, '55/00')
 
+    def fresh(self):
+        """a window nobody has mapped is disabled (FFh) on the card; a saved
+        and restored page map must leave it so.  The original PMEMM's record
+        of the frame started every window at page 0, so the restore MAPPED
+        page 0 there (found 2026-09-28; SC fix)"""
+        m = self.m
+        before = list(m.bank)
+        self.ems(0x4E00, es=BUFA, di=0x200)
+        h = self.ems(0x4300, bx=1)['dx']
+        self.map(0, 0, h)
+        self.ems(0x4E01, ds=BUFA, si=0x200)
+        self.T('4E fresh window     %s restored as %02X' % ('%02X' % before[0], m.bank[0]))
+        self.must(m.bank[0] == before[0] == 0xFF, 'a never-mapped window restored as disabled')
+        self.ems(0x4500, dx=h)
+
     def free(self):
         H1, H2 = self.H1, self.H2
         self.ems(0x4500, dx=H1); self.T('45 free H1         ' + self.st())
@@ -591,6 +606,9 @@ class Test:
         self.ems(0x4500, dx=H2); self.T('45 free H2         ' + self.st())
         r = self.ems(0x4B00); self.T('4B handles         %s BX=%d' % (self.st(), r['bx']))
         r = self.ems(0x4200); self.T('42 free = total    %d' % (r['bx'] == r['dx']))
+        self.ems(0x5C00)
+        self.T('5C warm boot prep   %s windows %s' % (self.st(), ' '.join('%02X' % b for b in self.m.bank)))
+        self.must(self.m.bank == [0xFF] * 4, '5Ch leaves every window disabled')
 
 
 def load(path):

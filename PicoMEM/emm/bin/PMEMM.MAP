@@ -1,6 +1,6 @@
 JWlink Version 2.0
 Portions Copyright (c) 1985-2002 Sybase, Inc. All Rights Reserved.
-Created on:       26/09/26 23:39:01
+Created on:       26/09/28 19:16:58
 Executable Image: bin\PMEMM.EXE
 creating a DOS executable
 
@@ -22,7 +22,7 @@ Group                           Address              Size
 Segment                Class          Group          Address         Size
 =======                =====          =====          =======         ====
 
-CODE                                  AUTO           0000:0000       00002391
+CODE                                  AUTO           0000:0000       000023bf
 
 
                         +----------------+
@@ -43,6 +43,6 @@ Warning! W1014: stack segment not found
                         +-----------------------+
 
 Stack size:  1000 (4096.)
-Memory size:  2391 (9105.)
-Entry point address: 0000:1ffb
-Link time: 00:00.15
+Memory size:  23bf (9151.)
+Entry point address: 0000:2029
+Link time: 00:00.00
