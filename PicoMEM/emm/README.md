@@ -127,6 +127,16 @@ of which the V30 has 45 KB free. The tables it carries -- 64 handles with
 halving them was judged not worth the risk to a boot driver for UMB bytes
 nobody is short of.
 
+**Loaded low it is 2.2-2.6x faster again** (2026-09-28, V30, `EMSTEST`
+straight after each boot; the behaviour transcript identical, CRC
+`90046ADC`): 44h map 6,632 -> 16,307 calls a second, 40h 8,606 -> 18,604,
+50h 1,100 -> 2,798, 4Eh 1,407 -> 3,284, 47h/48h 1,472 -> 3,785.  Code runs
+~2.4x slower out of the PicoMEM's upper memory, and every per-call
+function is mostly the driver's own code; the 16 KB moves are the card's
+PSRAM either way and gain only ~5%.  It costs 6,992 bytes of conventional
+memory, and the V30 now loads it with `device=` rather than `devicehigh=`.
+`C:\dosbridgeDEV\projects\dostune` has the comparison.
+
 ### Behaviour: identical except for the fixes
 
 `emuems.py` runs the *real binaries*, original and new, in an 8086
