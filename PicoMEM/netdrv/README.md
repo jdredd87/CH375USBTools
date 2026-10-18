@@ -93,6 +93,14 @@ the combination was broken before the driver was involved, and the 386 was
 retired before it was pinned down. The same driver ran the same 386 with a
 PicoMEM 1 all day, CRC-exact.
 
+**Frames sent back to back: the card loses one, on either driver
+(2026-10-18).**  On a Pentium II with a PicoMEM 2 (BIOS 2026-09-27), a frame
+that follows the last within about a millisecond is lost: a server sending
+three players a frame each, back to back, got 43-50 of 1,500 through to the
+second one -- with this driver and, swapped in live, with the original
+alike.  So it is the card, not this driver; a 1 ms pause after each frame
+cures it (DOSBridge `docs/network.md`, "Frames sent back to back").
+
 **Every file came through intact.** 1, 5 and 10 MB downloads were CRC-32
 checked against the server's copy on both drivers, on both cards in the
 V30 and on the PicoMEM 1 in the 386, and the new driver has carried all of
